@@ -1,3 +1,20 @@
+hal-bypass
+=========
+Detect where applications directly call Hardware Access functions, bypassing the Hardware Abstraction layer (HAL). 
+### Compile
+```bash
+export LLVM_DIR=<installation/dir/of/llvm/14>
+mkdir build
+cd build
+cmake -DLT_LLVM_INSTALL_DIR=$LLVM_DIR ..
+make
+```
+
+### Run
+```bash
+$LLVM_DIR/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output <path/to/posix_infinitime.bc>
+```
+
 llvm-tutor
 =========
 [![Build Status](https://github.com/banach-space/llvm-tutor/workflows/x86-Ubuntu/badge.svg?branch=main)](https://github.com/banach-space/llvm-tutor/actions?query=workflow%3Ax86-Ubuntu+branch%3Amain)
