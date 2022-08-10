@@ -46,6 +46,7 @@ bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
         // }
         auto CE = dyn_cast<ConstantExpr>(CastedIns->getPointerOperand());
         if (CE && CE->getOpcode() == Instruction::IntToPtr) {
+            dbgs() << *Ins << "\n";
             return true;
         }
     }
@@ -59,8 +60,9 @@ FindMMIOFunc::Result FindMMIOFunc::runOnModule(Module &M) {
     for (auto &BB : Func) {
       for (auto &Ins : BB) {
 
-        if (isMMIOInst<LoadInst>(&Ins) || isMMIOInst<StoreInst>(&Ins)) {
-            dbgs() << Func.getName() << ": load/store inttoptr\n";
+        if (isMMIOInst<LoadInst>(&Ins) || isMMIOInst<StoreInst>(&Ins)
+                || isMMIOInst<GetElementPtrInst>(&Ins)) {
+            dbgs() << "MMIO func: " << Func.getName() << "\n";
             Res.push_back(&Func);
             goto CheckNextFunction;
         }
