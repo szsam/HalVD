@@ -19,7 +19,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
-#include <vector>
+#include <map>
 
 //------------------------------------------------------------------------------
 // New PM interface
@@ -27,7 +27,15 @@
 //using ResultStaticCC = llvm::MapVector<const llvm::Function *, unsigned>;
 
 struct FindMMIOFunc : public llvm::AnalysisInfoMixin<FindMMIOFunc> {
-  using Result = std::vector<const llvm::Function *>;
+  struct NonHalMMIOFunc {
+    explicit NonHalMMIOFunc(const llvm::Instruction *I)
+        : MMIOIns(I), CalledByApp(false), Caller(nullptr) {}
+    //const llvm::Function *Func;
+    const llvm::Instruction *MMIOIns;
+    bool CalledByApp;
+    const llvm::Function *Caller;
+  };
+  using Result = std::map<const llvm::Function *, NonHalMMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
   Result runOnModule(llvm::Module &M);
   // Part of the official API:
@@ -41,7 +49,13 @@ private:
   friend struct llvm::AnalysisInfoMixin<FindMMIOFunc>;
 
   template <typename InstTy>
+  bool isMMIOInst_(llvm::Instruction *Ins);
   bool isMMIOInst(llvm::Instruction *Ins);
+  bool isHalFunc(const llvm::Function &F);
+  bool isAppFunc(const llvm::Function &F);
+  bool containHalStr(const std::string &Str);
+  void findNonHalMMIOFunc(llvm::Module &M, Result &MMIOFuncs);
+  void checkCalledByApp(llvm::Module &M, Result &MMIOFuncs);
 };
 
 //------------------------------------------------------------------------------

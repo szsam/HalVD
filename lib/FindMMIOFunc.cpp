@@ -28,72 +28,136 @@
 
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include "llvm/Analysis/CallGraph.h"
 
 using namespace llvm;
 
 // Pretty-prints the result of this analysis
 static void printMMIOFuncResult(llvm::raw_ostream &OutS,
-                         const FindMMIOFunc::Result &);
+                                const FindMMIOFunc::Result &);
 
 //------------------------------------------------------------------------------
 // FindMMIOFunc Implementation
 //------------------------------------------------------------------------------
 // InstTy = LoadInst or StoreInst
 template <typename InstTy>
-bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
-    if (auto CastedIns = dyn_cast<InstTy>(Ins)) {
-        // if (CastedIns->isVolatile()) {
-        // }
-        auto CE = dyn_cast<ConstantExpr>(CastedIns->getPointerOperand());
-        if (CE && CE->getOpcode() == Instruction::IntToPtr) {
-            dbgs() << *Ins << "\n";
-            return true;
-        }
-    }
+bool FindMMIOFunc::isMMIOInst_(llvm::Instruction *Ins) {
+  auto *TheIns = dyn_cast<InstTy>(Ins);
+  if (!TheIns)
     return false;
+  auto *CE = dyn_cast<ConstantExpr>(TheIns->getPointerOperand());
+  if (!(CE && CE->getOpcode() == Instruction::IntToPtr))
+    return false;
+
+  dbgs() << *Ins << "\n";
+  const APInt &Addr = cast<ConstantInt>(CE->getOperand(0))->getValue();
+  SmallVector<char> Str;
+  Addr.toStringUnsigned(Str, 16);
+  dbgs() << "Addr: " << Str << "\n";
+
+  const DebugLoc &Debug = Ins->getDebugLoc();
+  if (Debug) {
+    dbgs() << *Debug << "\n";
+    //Debug.dump();
+  }
+
+  return true;
+}
+
+bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
+  return (isMMIOInst_<LoadInst>(Ins) || isMMIOInst_<StoreInst>(Ins) ||
+          isMMIOInst_<GetElementPtrInst>(Ins));
+}
+
+bool FindMMIOFunc::containHalStr(const std::string &Str) {
+  return (Str.find("hal") != std::string::npos &&
+          Str.find("halt") == std::string::npos);
+}
+
+bool FindMMIOFunc::isHalFunc(const llvm::Function &F) {
+  DISubprogram *DISub = F.getSubprogram();
+  if (!DISub) {
+    dbgs() << "No debug info for this func\n";
+    return false;
+  }
+  DISub->dump();
+  DIFile *File = DISub->getFile();
+  File->dump();
+
+  std::string Name(DISub->getName());
+  std::string LinkageName(DISub->getLinkageName());
+  std::string Filename(File->getFilename());
+  if (containHalStr(Name) || containHalStr(LinkageName) ||
+      containHalStr(Filename)) {
+    dbgs() << "Hal function: " << DISub->getName() << " "
+      << LinkageName << " " << Filename << "\n";
+    return true;
+  }
+  return false;
+}
+
+bool FindMMIOFunc::isAppFunc(const llvm::Function &F) {
+  // return true if F MAY be an application function
+  DISubprogram *DISub = F.getSubprogram();
+  if (!DISub || !DISub->getFile())
+    return true;
+  std::string Filename(DISub->getFile()->getFilename());
+  if (Filename.find("SDK") != std::string::npos)
+    return false;
+  if (Filename.find("lib") != std::string::npos)
+    return false;
+  return true;
+}
+
+void FindMMIOFunc::findNonHalMMIOFunc(Module &M, Result &MMIOFuncs) {
+  for (auto &Func : M) {
+    if (isHalFunc(Func))
+      goto CheckNextFunction;
+    for (auto &Ins: instructions(Func)) {
+      if (isMMIOInst(&Ins)) {
+        dbgs() << "Non-hal MMIO func: " << Func.getName() << "\n";
+        //MMIOFuncs[&Func] = NonHalMMIOFunc(&Ins);
+        MMIOFuncs.insert({&Func, NonHalMMIOFunc(&Ins)});
+        goto CheckNextFunction;
+      }
+    }
+CheckNextFunction:
+    dbgs() << "\n";
+    continue;
+  }
+}
+
+void FindMMIOFunc::checkCalledByApp(Module &M, Result &MMIOFuncs) {
+  CallGraph CG = CallGraph(M);
+  CG.dump();
+  for (auto &I : CG) {
+    const Function *Caller = I.first;
+    if (Caller && !isAppFunc(*Caller))
+      continue;
+    for (auto &J : *I.second) {
+      //if (J.first) {
+      //  auto *Inst = (Instruction *)(Value *)J.first.getValue();
+      //  Inst->dump();
+      //}
+      const Function *Callee = J.second->getFunction();
+      auto Iter = MMIOFuncs.find(Callee);
+      if (Iter != MMIOFuncs.end()) {
+        Iter->second.CalledByApp = true;
+        Iter->second.Caller = Caller;
+      }
+    }
+  }
 }
 
 FindMMIOFunc::Result FindMMIOFunc::runOnModule(Module &M) {
   Result Res;
-
-  for (auto &Func : M) {
-    for (auto &BB : Func) {
-      for (auto &Ins : BB) {
-
-        if (isMMIOInst<LoadInst>(&Ins) || isMMIOInst<StoreInst>(&Ins)
-                || isMMIOInst<GetElementPtrInst>(&Ins)) {
-            dbgs() << "MMIO func: " << Func.getName() << "\n";
-            Res.push_back(&Func);
-            goto CheckNextFunction;
-        }
-
-
-
-        // // If CB is a direct function call then DirectInvoc will be not null.
-        // auto DirectInvoc = CB->getCalledFunction();
-        // if (nullptr == DirectInvoc) {
-        //   continue;
-        // }
-
-        // // We have a direct function call - update the count for the function
-        // // being called.
-        // auto CallCount = Res.find(DirectInvoc);
-        // if (Res.end() == CallCount) {
-        //   CallCount = Res.insert(std::make_pair(DirectInvoc, 0)).first;
-        // }
-        // ++CallCount->second;
-      }
-    }
-CheckNextFunction:
-    ;
-  }
-
+  findNonHalMMIOFunc(M, Res);
+  checkCalledByApp(M, Res);
   return Res;
 }
 
-PreservedAnalyses
-FindMMIOFuncPrinter::run(Module &M,
-                              ModuleAnalysisManager &MAM) {
+PreservedAnalyses FindMMIOFuncPrinter::run(Module &M,
+                                           ModuleAnalysisManager &MAM) {
 
   auto &MMIOFuncs = MAM.getResult<FindMMIOFunc>(M);
 
@@ -101,17 +165,17 @@ FindMMIOFuncPrinter::run(Module &M,
   return PreservedAnalyses::all();
 }
 
-FindMMIOFunc::Result
-FindMMIOFunc::run(llvm::Module &M, llvm::ModuleAnalysisManager &) {
+FindMMIOFunc::Result FindMMIOFunc::run(llvm::Module &M,
+                                       llvm::ModuleAnalysisManager &) {
   return runOnModule(M);
 }
 
-//bool LegacyFindMMIOFunc::runOnModule(llvm::Module &M) {
+// bool LegacyFindMMIOFunc::runOnModule(llvm::Module &M) {
 //  DirectCalls = Impl.runOnModule(M);
 //  return false;
 //}
 //
-//void LegacyFindMMIOFunc::print(raw_ostream &OutS, Module const *) const {
+// void LegacyFindMMIOFunc::print(raw_ostream &OutS, Module const *) const {
 //  printStaticCCResult(OutS, DirectCalls);
 //}
 
@@ -149,10 +213,10 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Legacy PM Registration
 //------------------------------------------------------------------------------
-//char LegacyFindMMIOFunc::ID = 0;
+// char LegacyFindMMIOFunc::ID = 0;
 //
 //// #1 REGISTRATION FOR "opt -analyze -legacy-static-cc"
-//RegisterPass<LegacyFindMMIOFunc>
+// RegisterPass<LegacyFindMMIOFunc>
 //    X(/*PassArg=*/"legacy-static-cc",
 //      /*Name=*/"LegacyFindMMIOFunc",
 //      /*CFGOnly=*/true,
@@ -162,23 +226,41 @@ llvmGetPassPluginInfo() {
 // Helper functions
 //------------------------------------------------------------------------------
 static void printMMIOFuncResult(raw_ostream &OutS,
-                                const FindMMIOFunc::Result &MMIOFunc) {
+                                const FindMMIOFunc::Result &Res) {
   OutS << "================================================="
        << "\n";
-  OutS << "LLVM-TUTOR: MMIO functions\n";
+  OutS << "LLVM-TUTOR: Non-hal MMIO functions\n";
   OutS << "=================================================\n";
-//  const char *str1 = "NAME";
-//  const char *str2 = "#N DIRECT CALLS";
-//  OutS << format("%-20s %-10s\n", str1, str2);
-//  OutS << "-------------------------------------------------"
-//       << "\n";
-//
-  for (auto &Func: MMIOFunc) {
-    OutS << Func->getName() << "\n";
-    // OutS << format("%-20s %-10lu\n", CallCount.first->getName().str().c_str(),
-    //                CallCount.second);
+  //  const char *str1 = "NAME";
+  //  const char *str2 = "#N DIRECT CALLS";
+  //  OutS << format("%-20s %-10s\n", str1, str2);
+  //  OutS << "-------------------------------------------------"
+  //       << "\n";
+  //
+  for (auto &KV : Res) {
+    if (!KV.second.CalledByApp)
+      continue;
+    OutS << KV.first->getName();
+    //DISubprogram *DISub = F.Func->getSubprogram();
+    //if (DISub && DISub->getFile())
+    //  OutS << " " << DISub->getFile()->getFilename();
+    const DebugLoc &DebugLoc = KV.second.MMIOIns->getDebugLoc();
+    if (DebugLoc)
+      OutS << "(" << cast<DIScope>(DebugLoc.getScope())->getFilename()
+           << ":" << DebugLoc.getLine() << ":" << DebugLoc.getCol() << ")";
+    OutS << " called by ";
+    if (KV.second.Caller) {
+      OutS << KV.second.Caller->getName();
+      DISubprogram *DI = KV.second.Caller->getSubprogram();
+      if (DI && DI->getFile())
+        OutS << "(" << DI->getFile()->getFilename() << ")";
+    }
+    else
+      OutS << "external node";
+    OutS << "\n";
   }
 
   OutS << "-------------------------------------------------"
        << "\n\n";
 }
+/* vim: set ts=2 sts=2 sw=2: */

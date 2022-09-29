@@ -26,49 +26,52 @@
 //==============================================================================
 #include "FindHALBypass.h"
 
+#include "llvm/Analysis/CallGraph.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
-#include "llvm/Analysis/CallGraph.h"
 #include <algorithm>
 
 using namespace llvm;
 
 // Pretty-prints the result of this analysis
 static void printHALBypassResult(llvm::raw_ostream &OutS,
-                         const FindHALBypass::Result &);
+                                 const FindHALBypass::Result &);
 
 //------------------------------------------------------------------------------
 // FindHALBypass Implementation
 //------------------------------------------------------------------------------
-FindHALBypass::Result FindHALBypass::runOnModule(Module &M,
-        const FindMMIOFunc::Result &MMIOFuncs) {
+FindHALBypass::Result
+FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
   Result Res;
   CallGraph CG = CallGraph(M);
+  CG.dump();
 
-  for (auto &F: CG) {
-      std::string CallerName("NONAME");
-      if (F.first && F.first->hasName()) {
-          CallerName = F.first->getName().str();
+  for (auto &F : CG) {
+    std::string CallerName("NONAME");
+    if (F.first && F.first->hasName()) {
+      CallerName = F.first->getName().str();
+    }
+    // dbgs() << "HAL: " << CallerName << "\n";
+    // continue if not starting with "_Z"
+    //if (CallerName.rfind("_ZN8Pinetime", 0) != 0)
+    //  continue;
+
+    for (auto &CR : *F.second) {
+      auto Callee = CR.second->getFunction();
+
+      std::string CalleeName("NONAME");
+      if (Callee && Callee->hasName())
+        CalleeName = Callee->getName().str();
+
+      auto It = MMIOFuncs.find(Callee);
+      //auto It = std::find_if(MMIOFuncs.begin(), MMIOFuncs.end(),
+      //                       [Callee](const FindMMIOFunc::NonHalMMIOFunc &F) {
+      //                         return F.Func == Callee;
+      //                       });
+      if (It != MMIOFuncs.end()) {
+        dbgs() << "HAL bypass: " << CallerName << " -> " << CalleeName << "\n";
       }
-      // dbgs() << "HAL: " << CallerName << "\n";
-      // starts with "_Z"
-      if (CallerName.rfind("_ZN8Pinetime", 0) != 0)
-         continue;
-
-      for (auto &CR: *F.second) {
-          auto Callee = CR.second->getFunction();
-
-          std::string CalleeName("NONAME");
-          if (Callee && Callee->hasName())
-              CalleeName = Callee->getName().str();
-          // dbgs() << "HAL: " << CallerName << " -> " << CalleeName << "\n";
-
-          auto It = std::find(MMIOFuncs.begin(), MMIOFuncs.end(), Callee);
-          if (It != MMIOFuncs.end()) {
-              dbgs() << "HAL bypass: " << CallerName << " -> " << CalleeName << "\n";
-          }
-
-      }
+    }
   }
 
   // for (auto &f: MMIOFuncs)
@@ -77,9 +80,8 @@ FindHALBypass::Result FindHALBypass::runOnModule(Module &M,
   return Res;
 }
 
-PreservedAnalyses
-FindHALBypassPrinter::run(Module &M,
-                              ModuleAnalysisManager &MAM) {
+PreservedAnalyses FindHALBypassPrinter::run(Module &M,
+                                            ModuleAnalysisManager &MAM) {
 
   auto &Res = MAM.getResult<FindHALBypass>(M);
 
@@ -87,18 +89,18 @@ FindHALBypassPrinter::run(Module &M,
   return PreservedAnalyses::all();
 }
 
-FindHALBypass::Result
-FindHALBypass::run(llvm::Module &M, llvm::ModuleAnalysisManager &MAM) {
+FindHALBypass::Result FindHALBypass::run(llvm::Module &M,
+                                         llvm::ModuleAnalysisManager &MAM) {
   auto &Funcs = MAM.getResult<FindMMIOFunc>(M);
   return runOnModule(M, Funcs);
 }
 
-//bool LegacyFindHALBypass::runOnModule(llvm::Module &M) {
+// bool LegacyFindHALBypass::runOnModule(llvm::Module &M) {
 //  DirectCalls = Impl.runOnModule(M);
 //  return false;
 //}
 //
-//void LegacyFindHALBypass::print(raw_ostream &OutS, Module const *) const {
+// void LegacyFindHALBypass::print(raw_ostream &OutS, Module const *) const {
 //  printStaticCCResult(OutS, DirectCalls);
 //}
 
@@ -136,10 +138,10 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Legacy PM Registration
 //------------------------------------------------------------------------------
-//char LegacyFindHALBypass::ID = 0;
+// char LegacyFindHALBypass::ID = 0;
 //
 //// #1 REGISTRATION FOR "opt -analyze -legacy-static-cc"
-//RegisterPass<LegacyFindHALBypass>
+// RegisterPass<LegacyFindHALBypass>
 //    X(/*PassArg=*/"legacy-static-cc",
 //      /*Name=*/"LegacyFindHALBypass",
 //      /*CFGOnly=*/true,
@@ -149,21 +151,22 @@ llvmGetPassPluginInfo() {
 // Helper functions
 //------------------------------------------------------------------------------
 static void printHALBypassResult(raw_ostream &OutS,
-                                const FindHALBypass::Result &MMIOFunc) {
+                                 const FindHALBypass::Result &MMIOFunc) {
   OutS << "================================================="
        << "\n";
   OutS << "LLVM-TUTOR: HAL bypass\n";
-//  const char *str1 = "NAME";
-//  const char *str2 = "#N DIRECT CALLS";
-//  OutS << format("%-20s %-10s\n", str1, str2);
-//  OutS << "-------------------------------------------------"
-//       << "\n";
-//
-//  for (auto &Func: MMIOFunc) {
-//    OutS << Func->getName() << "\n";
-//    // OutS << format("%-20s %-10lu\n", CallCount.first->getName().str().c_str(),
-//    //                CallCount.second);
-//  }
+  //  const char *str1 = "NAME";
+  //  const char *str2 = "#N DIRECT CALLS";
+  //  OutS << format("%-20s %-10s\n", str1, str2);
+  //  OutS << "-------------------------------------------------"
+  //       << "\n";
+  //
+  //  for (auto &Func: MMIOFunc) {
+  //    OutS << Func->getName() << "\n";
+  //    // OutS << format("%-20s %-10lu\n",
+  //    CallCount.first->getName().str().c_str(),
+  //    //                CallCount.second);
+  //  }
 
   OutS << "-------------------------------------------------"
        << "\n\n";
