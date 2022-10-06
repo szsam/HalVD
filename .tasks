@@ -1,8 +1,9 @@
 [+]
 LLVM_DIR=/usr/lib/llvm-14
+#LLVM_DIR=~/llvm-project-llvmorg-14.0.6/build/Debug
 
 [project-init]
-command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) ..
+command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) -DCMAKE_BUILD_TYPE=Debug ..
 cwd=<root>
 errorformat=
 save=2

@@ -26,9 +26,21 @@
 //==============================================================================
 #include "FindMMIOFunc.h"
 
+#include "llvm/Analysis/CallGraph.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
-#include "llvm/Analysis/CallGraph.h"
+
+//#define ENABLE_MY_DEBUG
+#ifdef ENABLE_MY_DEBUG
+#define MY_DEBUG(X)                                                            \
+  do {                                                                         \
+    X;                                                                         \
+  } while (false)
+#else
+#define MY_DEBUG(X)                                                            \
+  do {                                                                         \
+  } while (false)
+#endif
 
 using namespace llvm;
 
@@ -49,16 +61,15 @@ bool FindMMIOFunc::isMMIOInst_(llvm::Instruction *Ins) {
   if (!(CE && CE->getOpcode() == Instruction::IntToPtr))
     return false;
 
-  dbgs() << *Ins << "\n";
+  MY_DEBUG(dbgs() << *Ins << "\n");
   const APInt &Addr = cast<ConstantInt>(CE->getOperand(0))->getValue();
   SmallVector<char> Str;
   Addr.toStringUnsigned(Str, 16);
-  dbgs() << "Addr: " << Str << "\n";
+  MY_DEBUG(dbgs() << "Addr: " << Str << "\n");
 
   const DebugLoc &Debug = Ins->getDebugLoc();
   if (Debug) {
-    dbgs() << *Debug << "\n";
-    //Debug.dump();
+    MY_DEBUG(dbgs() << *Debug << "\n");
   }
 
   return true;
@@ -71,26 +82,29 @@ bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
 
 bool FindMMIOFunc::containHalStr(const std::string &Str) {
   return (Str.find("hal") != std::string::npos &&
-          Str.find("halt") == std::string::npos);
+          Str.find("halt") == std::string::npos) ||
+         Str.find("driver") != std::string::npos ||
+         Str.find("cmsis") != std::string::npos;
+         //Str.find("port") != std::string::npos;
 }
 
 bool FindMMIOFunc::isHalFunc(const llvm::Function &F) {
   DISubprogram *DISub = F.getSubprogram();
   if (!DISub) {
-    dbgs() << "No debug info for this func\n";
+    MY_DEBUG(dbgs() << "No debug info for this func\n");
     return false;
   }
-  DISub->dump();
   DIFile *File = DISub->getFile();
-  File->dump();
+  MY_DEBUG(DISub->dump());
+  MY_DEBUG(File->dump());
 
   std::string Name(DISub->getName());
   std::string LinkageName(DISub->getLinkageName());
   std::string Filename(File->getFilename());
   if (containHalStr(Name) || containHalStr(LinkageName) ||
       containHalStr(Filename)) {
-    dbgs() << "Hal function: " << DISub->getName() << " "
-      << LinkageName << " " << Filename << "\n";
+    MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
+                    << LinkageName << " " << Filename << "\n");
     return true;
   }
   return false;
@@ -106,6 +120,8 @@ bool FindMMIOFunc::isAppFunc(const llvm::Function &F) {
     return false;
   if (Filename.find("lib") != std::string::npos)
     return false;
+  if (Filename.find("driver") != std::string::npos)
+    return false;
   return true;
 }
 
@@ -113,37 +129,38 @@ void FindMMIOFunc::findNonHalMMIOFunc(Module &M, Result &MMIOFuncs) {
   for (auto &Func : M) {
     if (isHalFunc(Func))
       goto CheckNextFunction;
-    for (auto &Ins: instructions(Func)) {
+    for (auto &Ins : instructions(Func)) {
       if (isMMIOInst(&Ins)) {
-        dbgs() << "Non-hal MMIO func: " << Func.getName() << "\n";
-        //MMIOFuncs[&Func] = NonHalMMIOFunc(&Ins);
+        MY_DEBUG(dbgs() << "Non-hal MMIO func: " << Func.getName() << "\n");
+        // MMIOFuncs[&Func] = NonHalMMIOFunc(&Ins);
         MMIOFuncs.insert({&Func, NonHalMMIOFunc(&Ins)});
         goto CheckNextFunction;
       }
     }
-CheckNextFunction:
-    dbgs() << "\n";
-    continue;
+  CheckNextFunction:
+    MY_DEBUG(dbgs() << "\n");
+    // continue;
   }
 }
 
 void FindMMIOFunc::checkCalledByApp(Module &M, Result &MMIOFuncs) {
   CallGraph CG = CallGraph(M);
-  CG.dump();
+  MY_DEBUG(CG.dump());
   for (auto &I : CG) {
     const Function *Caller = I.first;
     if (Caller && !isAppFunc(*Caller))
       continue;
     for (auto &J : *I.second) {
-      //if (J.first) {
-      //  auto *Inst = (Instruction *)(Value *)J.first.getValue();
-      //  Inst->dump();
-      //}
       const Function *Callee = J.second->getFunction();
       auto Iter = MMIOFuncs.find(Callee);
       if (Iter != MMIOFuncs.end()) {
         Iter->second.CalledByApp = true;
         Iter->second.Caller = Caller;
+        if (J.first) {
+          auto *CI = cast<CallInst>(static_cast<Value *>(J.first.getValue()));
+          Iter->second.CallI = CI;
+          MY_DEBUG(CI->dump());
+        }
       }
     }
   }
@@ -225,6 +242,12 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Helper functions
 //------------------------------------------------------------------------------
+static void printDebugLoc(raw_ostream &OutS,const DebugLoc &DL) {
+  if (DL)
+    OutS << "(" << cast<DIScope>(DL.getScope())->getFilename() << ":"
+      << DL.getLine() << ":" << DL.getCol() << ")";
+}
+
 static void printMMIOFuncResult(raw_ostream &OutS,
                                 const FindMMIOFunc::Result &Res) {
   OutS << "================================================="
@@ -237,25 +260,24 @@ static void printMMIOFuncResult(raw_ostream &OutS,
   //  OutS << "-------------------------------------------------"
   //       << "\n";
   //
+  OutS << "MMIO-func(location of mmio inst) called by App-func(location of call inst)\n";
   for (auto &KV : Res) {
     if (!KV.second.CalledByApp)
       continue;
     OutS << KV.first->getName();
-    //DISubprogram *DISub = F.Func->getSubprogram();
-    //if (DISub && DISub->getFile())
+    // DISubprogram *DISub = F.Func->getSubprogram();
+    // if (DISub && DISub->getFile())
     //  OutS << " " << DISub->getFile()->getFilename();
-    const DebugLoc &DebugLoc = KV.second.MMIOIns->getDebugLoc();
-    if (DebugLoc)
-      OutS << "(" << cast<DIScope>(DebugLoc.getScope())->getFilename()
-           << ":" << DebugLoc.getLine() << ":" << DebugLoc.getCol() << ")";
+    printDebugLoc(OutS, KV.second.MMIOIns->getDebugLoc());
     OutS << " called by ";
     if (KV.second.Caller) {
       OutS << KV.second.Caller->getName();
-      DISubprogram *DI = KV.second.Caller->getSubprogram();
-      if (DI && DI->getFile())
-        OutS << "(" << DI->getFile()->getFilename() << ")";
-    }
-    else
+      //DISubprogram *DI = KV.second.Caller->getSubprogram();
+      //if (DI && DI->getFile())
+      //  OutS << "(" << DI->getFile()->getFilename() << ")";
+      assert(KV.second.CallI);
+      printDebugLoc(OutS, KV.second.CallI->getDebugLoc());
+    } else
       OutS << "external node";
     OutS << "\n";
   }

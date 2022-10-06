@@ -29,11 +29,12 @@
 struct FindMMIOFunc : public llvm::AnalysisInfoMixin<FindMMIOFunc> {
   struct NonHalMMIOFunc {
     explicit NonHalMMIOFunc(const llvm::Instruction *I)
-        : MMIOIns(I), CalledByApp(false), Caller(nullptr) {}
+        : MMIOIns(I), CalledByApp(false), Caller(nullptr), CallI(nullptr) {}
     //const llvm::Function *Func;
     const llvm::Instruction *MMIOIns;
     bool CalledByApp;
     const llvm::Function *Caller;
+    const llvm::CallInst *CallI;
   };
   using Result = std::map<const llvm::Function *, NonHalMMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
