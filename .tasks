@@ -15,8 +15,8 @@ errorformat=%f:%l:%m
 save=2
 
 [project-run]
-#command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
-command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<mmio-func>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
+command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
+#command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<mmio-func>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
 cwd=<root>/build
 output=terminal
 #pos=TAB

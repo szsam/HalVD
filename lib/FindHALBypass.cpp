@@ -40,42 +40,62 @@ static void printHALBypassResult(llvm::raw_ostream &OutS,
 //------------------------------------------------------------------------------
 // FindHALBypass Implementation
 //------------------------------------------------------------------------------
+bool FindHALBypass::containHalStr(const std::string &Str) {
+  return (Str.find("hal") != std::string::npos &&
+          Str.find("halt") == std::string::npos) ||
+         Str.find("driver") != std::string::npos ||
+         Str.find("cmsis") != std::string::npos;
+         //Str.find("port") != std::string::npos;
+}
+
+bool FindHALBypass::isHalFunc(const llvm::Function &F) {
+  DISubprogram *DISub = F.getSubprogram();
+  if (!DISub) {
+    MY_DEBUG(dbgs() << "No debug info for this func\n");
+    return false;
+  }
+  DIFile *File = DISub->getFile();
+  MY_DEBUG(DISub->dump());
+  MY_DEBUG(File->dump());
+
+  std::string Name(DISub->getName());
+  std::string LinkageName(DISub->getLinkageName());
+  std::string Filename(File->getFilename());
+  if (containHalStr(Name) || containHalStr(LinkageName) ||
+      containHalStr(Filename)) {
+    MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
+                    << LinkageName << " " << Filename << "\n");
+    return true;
+  }
+  return false;
+}
+
+bool FindHALBypass::isLibFunc(const llvm::Function &F) {
+  DISubprogram *DISub = F.getSubprogram();
+  if (!DISub || !DISub->getFile())
+    return false;
+  std::string Filename(DISub->getFile()->getFilename());
+  if (Filename.find("SDK") != std::string::npos)
+    return true;
+  if (Filename.find("lib") != std::string::npos)
+    return true;
+  if (Filename.find("driver") != std::string::npos)
+    return true;
+  return false;
+}
+
 FindHALBypass::Result
 FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
   Result Res;
-  CallGraph CG = CallGraph(M);
-  CG.dump();
-
-  for (auto &F : CG) {
-    std::string CallerName("NONAME");
-    if (F.first && F.first->hasName()) {
-      CallerName = F.first->getName().str();
+  for (auto &Node : MMIOFuncs) {
+    const Function *F = Node.first;
+    MMIOFunc MF = MMIOFunc(Node.second);
+    if (isLibFunc(*F)) {
+      MF.IsLib = true;
+      MF.IsHal = isHalFunc(*F);
     }
-    // dbgs() << "HAL: " << CallerName << "\n";
-    // continue if not starting with "_Z"
-    //if (CallerName.rfind("_ZN8Pinetime", 0) != 0)
-    //  continue;
-
-    for (auto &CR : *F.second) {
-      auto Callee = CR.second->getFunction();
-
-      std::string CalleeName("NONAME");
-      if (Callee && Callee->hasName())
-        CalleeName = Callee->getName().str();
-
-      auto It = MMIOFuncs.find(Callee);
-      //auto It = std::find_if(MMIOFuncs.begin(), MMIOFuncs.end(),
-      //                       [Callee](const FindMMIOFunc::NonHalMMIOFunc &F) {
-      //                         return F.Func == Callee;
-      //                       });
-      if (It != MMIOFuncs.end()) {
-        dbgs() << "HAL bypass: " << CallerName << " -> " << CalleeName << "\n";
-      }
-    }
+    Res.insert({F, MF});
   }
-
-  // for (auto &f: MMIOFuncs)
-  //     dbgs() << f->getName() << "   HAL\n";
 
   return Res;
 }
@@ -151,7 +171,7 @@ llvmGetPassPluginInfo() {
 // Helper functions
 //------------------------------------------------------------------------------
 static void printHALBypassResult(raw_ostream &OutS,
-                                 const FindHALBypass::Result &MMIOFunc) {
+                                 const FindHALBypass::Result &MMIOFuncs) {
   OutS << "================================================="
        << "\n";
   OutS << "LLVM-TUTOR: HAL bypass\n";
@@ -161,12 +181,10 @@ static void printHALBypassResult(raw_ostream &OutS,
   //  OutS << "-------------------------------------------------"
   //       << "\n";
   //
-  //  for (auto &Func: MMIOFunc) {
-  //    OutS << Func->getName() << "\n";
-  //    // OutS << format("%-20s %-10lu\n",
-  //    CallCount.first->getName().str().c_str(),
-  //    //                CallCount.second);
-  //  }
+  for (auto &Node : MMIOFuncs) {
+    if (!Node.second.IsLib)
+      OutS << Node.first->getName() << "\n";
+  }
 
   OutS << "-------------------------------------------------"
        << "\n\n";

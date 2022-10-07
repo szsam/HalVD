@@ -29,7 +29,17 @@
 //using ResultStaticCC = llvm::MapVector<const llvm::Function *, unsigned>;
 
 struct FindHALBypass : public llvm::AnalysisInfoMixin<FindHALBypass> {
-  using Result = std::vector<const llvm::Function *>;
+  struct MMIOFunc : public FindMMIOFunc::MMIOFunc {
+    MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent)
+      : FindMMIOFunc::MMIOFunc(Parent), IsLib(false), IsHal(false),
+        CalledByApp(false), Caller(nullptr), CallI(nullptr) {}
+    bool IsLib; // library or application func
+    bool IsHal; // Is HAL func. Valid only for lib func
+    bool CalledByApp;
+    const llvm::Function *Caller;
+    const llvm::CallInst *CallI;
+  };
+  using Result = std::map<const llvm::Function *, MMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
   Result runOnModule(llvm::Module &M, const FindMMIOFunc::Result &);
   // Part of the official API:
@@ -41,6 +51,10 @@ private:
   // identifies that particular analysis pass type.
   static llvm::AnalysisKey Key;
   friend struct llvm::AnalysisInfoMixin<FindHALBypass>;
+
+  bool isHalFunc(const llvm::Function &F);
+  bool isLibFunc(const llvm::Function &F);
+  bool containHalStr(const std::string &Str);
 };
 
 //------------------------------------------------------------------------------
