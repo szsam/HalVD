@@ -26,7 +26,7 @@
 //------------------------------------------------------------------------------
 //using ResultStaticCC = llvm::MapVector<const llvm::Function *, unsigned>;
 
-#define ENABLE_MY_DEBUG
+//#define ENABLE_MY_DEBUG
 #ifdef ENABLE_MY_DEBUG
 #define MY_DEBUG(X)                                                            \
   do {                                                                         \

@@ -54,7 +54,7 @@ private:
 
   bool isHalFunc(const llvm::Function &F);
   bool isLibFunc(const llvm::Function &F);
-  bool containHalStr(const std::string &Str);
+  bool isHal(const std::string &Str);
 };
 
 //------------------------------------------------------------------------------

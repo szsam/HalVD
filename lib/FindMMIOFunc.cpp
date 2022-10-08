@@ -179,12 +179,6 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Helper functions
 //------------------------------------------------------------------------------
-static void printDebugLoc(raw_ostream &OutS,const DebugLoc &DL) {
-  if (DL)
-    OutS << cast<DIScope>(DL.getScope())->getFilename() << ":"
-      << DL.getLine() << ":" << DL.getCol();
-}
-
 static void printMMIOFuncResult(raw_ostream &OutS,
                                 const FindMMIOFunc::Result &Res) {
   OutS << "================================================="
@@ -203,7 +197,7 @@ static void printMMIOFuncResult(raw_ostream &OutS,
     // DISubprogram *DISub = F.Func->getSubprogram();
     // if (DISub && DISub->getFile())
     //  OutS << " " << DISub->getFile()->getFilename();
-    printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
+    Node.second.MMIOIns->getDebugLoc().print(OutS);
     OutS << "\n";
   }
 

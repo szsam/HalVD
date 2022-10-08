@@ -40,7 +40,7 @@ static void printHALBypassResult(llvm::raw_ostream &OutS,
 //------------------------------------------------------------------------------
 // FindHALBypass Implementation
 //------------------------------------------------------------------------------
-bool FindHALBypass::containHalStr(const std::string &Str) {
+bool FindHALBypass::isHal(const std::string &Str) {
   return (Str.find("hal") != std::string::npos &&
           Str.find("halt") == std::string::npos) ||
          Str.find("driver") != std::string::npos ||
@@ -51,7 +51,7 @@ bool FindHALBypass::containHalStr(const std::string &Str) {
 bool FindHALBypass::isHalFunc(const llvm::Function &F) {
   DISubprogram *DISub = F.getSubprogram();
   if (!DISub) {
-    MY_DEBUG(dbgs() << "No debug info for this func\n");
+    errs() << "Warning: isHalFunc: DISubprogram not exists.\n";
     return false;
   }
   DIFile *File = DISub->getFile();
@@ -61,8 +61,7 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
   std::string Name(DISub->getName());
   std::string LinkageName(DISub->getLinkageName());
   std::string Filename(File->getFilename());
-  if (containHalStr(Name) || containHalStr(LinkageName) ||
-      containHalStr(Filename)) {
+  if (isHal(Name) || isHal(LinkageName) || isHal(Filename)) {
     MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
                     << LinkageName << " " << Filename << "\n");
     return true;
@@ -72,16 +71,14 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
 
 bool FindHALBypass::isLibFunc(const llvm::Function &F) {
   DISubprogram *DISub = F.getSubprogram();
-  if (!DISub || !DISub->getFile())
+  if (!DISub || !DISub->getFile()) {
+    errs() << "Warning: isLibFunc: DISubprogram not exists.\n";
     return false;
+  }
   std::string Filename(DISub->getFile()->getFilename());
-  if (Filename.find("SDK") != std::string::npos)
-    return true;
-  if (Filename.find("lib") != std::string::npos)
-    return true;
-  if (Filename.find("driver") != std::string::npos)
-    return true;
-  return false;
+  return (Filename.find("SDK") != std::string::npos) ||
+         (Filename.find("lib") != std::string::npos) ||
+         (Filename.find("driver") != std::string::npos);
 }
 
 FindHALBypass::Result
@@ -182,8 +179,11 @@ static void printHALBypassResult(raw_ostream &OutS,
   //       << "\n";
   //
   for (auto &Node : MMIOFuncs) {
-    if (!Node.second.IsLib)
-      OutS << Node.first->getName() << "\n";
+    if (!Node.second.IsLib) {
+      OutS << Node.first->getName() << " ";
+      Node.second.MMIOIns->getDebugLoc().print(OutS);
+      OutS << "\n";
+    }
   }
 
   OutS << "-------------------------------------------------"
