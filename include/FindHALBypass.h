@@ -55,6 +55,7 @@ private:
   bool isHalFunc(const llvm::Function &F);
   bool isLibFunc(const llvm::Function &F);
   bool isHal(const std::string &Str);
+  void checkCalledByApp(llvm::Module &M, Result &MMIOFuncs);
 };
 
 //------------------------------------------------------------------------------

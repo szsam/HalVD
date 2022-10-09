@@ -72,13 +72,37 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
 bool FindHALBypass::isLibFunc(const llvm::Function &F) {
   DISubprogram *DISub = F.getSubprogram();
   if (!DISub || !DISub->getFile()) {
-    errs() << "Warning: isLibFunc: DISubprogram not exists.\n";
+    errs() << "Warning: isLibFunc: " << F.getName()
+           << ": DISubprogram not exists.\n";
     return false;
   }
   std::string Filename(DISub->getFile()->getFilename());
   return (Filename.find("SDK") != std::string::npos) ||
          (Filename.find("lib") != std::string::npos) ||
-         (Filename.find("driver") != std::string::npos);
+         (Filename.find("driver") != std::string::npos) ||
+         (Filename.find("RTOS") != std::string::npos);
+}
+
+void FindHALBypass::checkCalledByApp(Module &M, Result &MMIOFuncs) {
+  CallGraph CG = CallGraph(M);
+  for (auto &I : CG) {
+    const Function *Caller = I.first;
+    if (Caller && isLibFunc(*Caller))
+      continue;
+    for (auto &J : *I.second) {
+      const Function *Callee = J.second->getFunction();
+      auto Iter = MMIOFuncs.find(Callee);
+      if (Iter != MMIOFuncs.end()) {
+        Iter->second.CalledByApp = true;
+        Iter->second.Caller = Caller;
+        if (J.first) {
+          auto *CI = cast<CallInst>(static_cast<Value *>(J.first.getValue()));
+          Iter->second.CallI = CI;
+          MY_DEBUG(CI->dump());
+        }
+      }
+    }
+  }
 }
 
 FindHALBypass::Result
@@ -93,6 +117,7 @@ FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
     }
     Res.insert({F, MF});
   }
+  checkCalledByApp(M, Res);
 
   return Res;
 }
@@ -167,25 +192,50 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Helper functions
 //------------------------------------------------------------------------------
-static void printHALBypassResult(raw_ostream &OutS,
-                                 const FindHALBypass::Result &MMIOFuncs) {
+static void printFuncs(raw_ostream &OutS,
+                       const FindHALBypass::Result &MMIOFuncs,
+                       const char *Str) {
   OutS << "================================================="
        << "\n";
-  OutS << "LLVM-TUTOR: HAL bypass\n";
-  //  const char *str1 = "NAME";
-  //  const char *str2 = "#N DIRECT CALLS";
-  //  OutS << format("%-20s %-10s\n", str1, str2);
-  //  OutS << "-------------------------------------------------"
-  //       << "\n";
-  //
+  OutS << "LLVM-TUTOR: " << Str << " (# = " << MMIOFuncs.size() << ")\n";
+  OutS << "Function, Location of MMIO inst\n";
+  OutS << "-------------------------------------------------"
+       << "\n";
+
   for (auto &Node : MMIOFuncs) {
-    if (!Node.second.IsLib) {
-      OutS << Node.first->getName() << " ";
-      Node.second.MMIOIns->getDebugLoc().print(OutS);
-      OutS << "\n";
-    }
+    OutS << Node.first->getName() << " ";
+    Node.second.MMIOIns->getDebugLoc().print(OutS);
+    OutS << "\n";
+    // if (Node.second.CalledByApp) {
+    //   OutS << "    Called by ";
+    //   if (Node.second.Caller) {
+    //     OutS << Node.second.Caller->getName() << " ";
+    //     Node.second.CallI->getDebugLoc().print(OutS);
+    //   } else {
+    //     OutS << "external node";
+    //   }
+    //   OutS << "\n";
+    // }
   }
 
   OutS << "-------------------------------------------------"
        << "\n\n";
+}
+
+static void printHALBypassResult(raw_ostream &OutS,
+                                 const FindHALBypass::Result &MMIOFuncs) {
+  FindHALBypass::Result AppFuncs;
+  FindHALBypass::Result LibNonHalFuncs;
+  FindHALBypass::Result LibHalFuncs;
+  for (auto &Node : MMIOFuncs) {
+    if (!Node.second.IsLib)
+      AppFuncs.insert(Node);
+    else if (!Node.second.IsHal)
+      LibNonHalFuncs.insert(Node);
+    else
+      LibHalFuncs.insert(Node);
+  }
+  printFuncs(OutS, AppFuncs,       "Application MMIO functions");
+  printFuncs(OutS, LibNonHalFuncs, "Library non-hal MMIO functions");
+  printFuncs(OutS, LibHalFuncs,    "Hal MMIO functions");
 }

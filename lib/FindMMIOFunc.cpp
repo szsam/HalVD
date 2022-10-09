@@ -81,29 +81,6 @@ void FindMMIOFunc::findMMIOFunc(Module &M, Result &MMIOFuncs) {
   }
 }
 
-// void FindMMIOFunc::checkCalledByApp(Module &M, Result &MMIOFuncs) {
-//   CallGraph CG = CallGraph(M);
-//   MY_DEBUG(CG.dump());
-//   for (auto &I : CG) {
-//     const Function *Caller = I.first;
-//     if (Caller && !isAppFunc(*Caller))
-//       continue;
-//     for (auto &J : *I.second) {
-//       const Function *Callee = J.second->getFunction();
-//       auto Iter = MMIOFuncs.find(Callee);
-//       if (Iter != MMIOFuncs.end()) {
-//         Iter->second.CalledByApp = true;
-//         Iter->second.Caller = Caller;
-//         if (J.first) {
-//           auto *CI = cast<CallInst>(static_cast<Value *>(J.first.getValue()));
-//           Iter->second.CallI = CI;
-//           MY_DEBUG(CI->dump());
-//         }
-//       }
-//     }
-//   }
-// }
-
 FindMMIOFunc::Result FindMMIOFunc::runOnModule(Module &M) {
   Result Res;
   findMMIOFunc(M, Res);
