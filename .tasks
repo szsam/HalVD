@@ -1,6 +1,8 @@
 [+]
 LLVM_DIR=/usr/lib/llvm-14
 #LLVM_DIR=~/llvm-project-llvmorg-14.0.6/build/Debug
+BITCODE=/home/smj/purs3/nrf52-keyboard/keyboard/lot60-ble/_build/rev_c/nrf52_kbd.out.bc
+#BITCODE=<root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc
 
 [project-init]
 command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) -DCMAKE_BUILD_TYPE=Debug ..
@@ -15,7 +17,8 @@ errorformat=%f:%l:%m
 save=2
 
 [project-run]
-command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
+command=python3 <root>/run.py
+#command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output 2> nrf-keyboard.out
 #command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<mmio-func>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
 cwd=<root>/build
 output=terminal
