@@ -9,6 +9,10 @@
 ~/purs3/nrf52-keyboard/keyboard/lot60-ble/_build/rev_g_832/nrf52_kbd.out.bc
 ~/purs3/Avem/main.elf
 ~/purs3/Amazfitbip-FreeRTOS/bin/main.elf.bc
+~/purs3/esp/esp-idf/examples/protocols/https_server/wss_server/build/wss_server.elf.ll
+~/purs3/esp/esp-idf/examples/protocols/https_server/wss_server/build/bootloader/bootloader.elf.ll
+~/purs3/esp/esp-idf/examples/protocols/https_server/simple/build/bootloader/bootloader.elf.ll
+~/purs3/esp/esp-idf/examples/protocols/https_server/simple/build/https_server.elf.ll
 
 ~/purs3/zephyrproject/zephyr/build/atsamd20_xpro/button/zephyr/zephyr.elf.bc
 ~/purs3/zephyrproject/zephyr/build/atsamd20_xpro/blinky/zephyr/zephyr.elf.bc
