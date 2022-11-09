@@ -7,6 +7,8 @@
 ~/purs3/nrf52-keyboard/keyboard/lot60-ble/_build/rev_g/nrf52_kbd.out.bc
 ~/purs3/nrf52-keyboard/keyboard/lot60-ble/_build/rev_g_3led/nrf52_kbd.out.bc
 ~/purs3/nrf52-keyboard/keyboard/lot60-ble/_build/rev_g_832/nrf52_kbd.out.bc
+~/purs3/Avem/main.elf
+~/purs3/Amazfitbip-FreeRTOS/bin/main.elf.bc
 
 ~/purs3/zephyrproject/zephyr/build/atsamd20_xpro/button/zephyr/zephyr.elf.bc
 ~/purs3/zephyrproject/zephyr/build/atsamd20_xpro/blinky/zephyr/zephyr.elf.bc
