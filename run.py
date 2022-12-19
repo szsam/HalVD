@@ -8,7 +8,7 @@ LLVM_DIR='/usr/lib/llvm-14'
 with open("firmware.txt") as f:
     for line in f:
         bc = line.strip()
-        if bc:
+        if bc and not bc.startswith('#'):
             name = re.sub(r"\.[^.]+\.(bc|ll)$", "", bc)  # remove ".xxx.(bc|ll)"
             name = re.sub(r"(purs3|_?build)", "", name)
             name = re.sub(r"[^\w\s-]", "-", name)

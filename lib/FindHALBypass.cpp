@@ -40,10 +40,15 @@ static void printHALBypassResult(llvm::raw_ostream &OutS,
 //------------------------------------------------------------------------------
 // FindHALBypass Implementation
 //------------------------------------------------------------------------------
-bool FindHALBypass::isHal(const std::string &Str) {
+bool FindHALBypass::isHal(const std::string &Name) {
+  std::string Str(Name);
+  std::transform(Str.begin(), Str.end(), Str.begin(),
+      [](unsigned char c){ return std::tolower(c); });
   return (Str.find("hal") != std::string::npos &&
           Str.find("halt") == std::string::npos) ||
          Str.find("driver") != std::string::npos ||
+         Str.find("arch") != std::string::npos ||
+         Str.find("soc") != std::string::npos ||
          Str.find("cmsis") != std::string::npos;
          //Str.find("port") != std::string::npos;
 }
@@ -77,10 +82,14 @@ bool FindHALBypass::isLibFunc(const llvm::Function &F) {
     return false;
   }
   std::string Filename(DISub->getFile()->getFilename());
-  return (Filename.find("SDK") != std::string::npos) ||
+  Filename += "/" + std::string(DISub->getFile()->getDirectory());
+  std::transform(Filename.begin(), Filename.end(), Filename.begin(),
+      [](unsigned char c){ return std::tolower(c); });
+  return (Filename.find("sdk") != std::string::npos) ||
          (Filename.find("lib") != std::string::npos) ||
          (Filename.find("driver") != std::string::npos) ||
-         (Filename.find("RTOS") != std::string::npos);
+         (Filename.find("zephyr") != std::string::npos) ||
+         (Filename.find("rtos") != std::string::npos);
 }
 
 void FindHALBypass::checkCalledByApp(Module &M, Result &MMIOFuncs) {
@@ -192,6 +201,26 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Helper functions
 //------------------------------------------------------------------------------
+static void printDebugLoc(raw_ostream &OS, const DebugLoc &DL) {
+  if (!DL)
+    return;
+
+   // Print source line info.
+   auto *Scope = cast<DIScope>(DL.getScope());
+   OS << Scope->getDirectory();
+   OS << "/";
+   OS << Scope->getFilename();
+   OS << ':' << DL.getLine();
+   if (DL.getCol() != 0)
+     OS << ':' << DL.getCol();
+
+   if (DebugLoc InlinedAtDL = DL.getInlinedAt()) {
+     OS << " @[ ";
+     InlinedAtDL.print(OS);
+     OS << " ]";
+   }
+}
+
 static void printFuncs(raw_ostream &OutS,
                        const FindHALBypass::Result &MMIOFuncs,
                        const char *Str) {
@@ -204,7 +233,8 @@ static void printFuncs(raw_ostream &OutS,
 
   for (auto &Node : MMIOFuncs) {
     OutS << Node.first->getName() << " ";
-    Node.second.MMIOIns->getDebugLoc().print(OutS);
+    //Node.second.MMIOIns->getDebugLoc().print(OutS);
+    printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
     OutS << "\n";
     // if (Node.second.CalledByApp) {
     //   OutS << "    Called by ";
