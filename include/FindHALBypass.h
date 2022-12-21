@@ -21,6 +21,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Analysis/CallGraph.h"
 #include <vector>
 
 //------------------------------------------------------------------------------
@@ -31,14 +32,11 @@
 struct FindHALBypass : public llvm::AnalysisInfoMixin<FindHALBypass> {
   struct MMIOFunc : public FindMMIOFunc::MMIOFunc {
     MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent)
-      : FindMMIOFunc::MMIOFunc(Parent), IsLib(false), IsHal(false),
-        CalledByApp(false), Caller(nullptr), CallI(nullptr) {}
-    bool IsLib; // library or application func
-    bool IsHal; // Is HAL func. Valid only for lib func
-    bool CalledByApp;
-    const llvm::Function *Caller;
-    const llvm::CallInst *CallI;
+      : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), InDegree(0) {}
+    bool IsHal;
+    int InDegree;
   };
+
   using Result = std::map<const llvm::Function *, MMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
   Result runOnModule(llvm::Module &M, const FindMMIOFunc::Result &);
@@ -53,9 +51,11 @@ private:
   friend struct llvm::AnalysisInfoMixin<FindHALBypass>;
 
   bool isHalFunc(const llvm::Function &F);
-  bool isLibFunc(const llvm::Function &F);
-  bool isHal(const std::string &Str);
-  void checkCalledByApp(llvm::Module &M, Result &MMIOFuncs);
+  bool isHalFuncRegex(const llvm::Function &F);
+  bool isHalRegexInternal(const std::string &Name);
+  void callGraphBasedHalIdent(llvm::CallGraph &CG);
+
+  Result MMIOFuncMap;
 };
 
 //------------------------------------------------------------------------------
@@ -78,17 +78,19 @@ private:
 //------------------------------------------------------------------------------
 // Legacy PM interface
 //------------------------------------------------------------------------------
-//struct LegacyFindHALBypass : public llvm::ModulePass {
-//  static char ID;
-//  LegacyFindHALBypass() : llvm::ModulePass(ID) {}
-//  bool runOnModule(llvm::Module &M) override;
-//  // The print method must be implemented by Legacy analysis passes in order to
-//  // print a human readable version of the analysis results:
-//  //    http://llvm.org/docs/WritingAnLLVMPass.html#the-print-method
-//  void print(llvm::raw_ostream &OutS, llvm::Module const *M) const override;
-//
-//  ResultStaticCC DirectCalls;
-//  FindHALBypass Impl;
-//};
+#if 0
+struct LegacyFindHALBypass : public llvm::ModulePass {
+  static char ID;
+  LegacyFindHALBypass() : llvm::ModulePass(ID) {}
+  bool runOnModule(llvm::Module &M) override;
+  // The print method must be implemented by Legacy analysis passes in order to
+  // print a human readable version of the analysis results:
+  //    http://llvm.org/docs/WritingAnLLVMPass.html#the-print-method
+  void print(llvm::raw_ostream &OutS, llvm::Module const *M) const override;
+
+  ResultStaticCC DirectCalls;
+  FindHALBypass Impl;
+};
+#endif
 
 #endif // LLVM_TUTOR_FINDHALBYPASS_H
