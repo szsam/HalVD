@@ -30,6 +30,7 @@
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
 #include <algorithm>
+#include <regex>
 
 using namespace llvm;
 
@@ -73,17 +74,8 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
 }
 
 bool FindHALBypass::isHalRegexInternal(const std::string &Name) {
-  // "hal(?!t)|driver|cmsis|arch|soc"
-  std::string Str(Name);
-  std::transform(Str.begin(), Str.end(), Str.begin(),
-      [](unsigned char c){ return std::tolower(c); });
-  return (Str.find("hal") != std::string::npos &&
-          Str.find("halt") == std::string::npos) ||
-         Str.find("driver") != std::string::npos ||
-         Str.find("arch") != std::string::npos ||
-         Str.find("soc") != std::string::npos ||
-         Str.find("cmsis") != std::string::npos;
-         //Str.find("port") != std::string::npos;
+  std::regex Regex("hal(?!t)|driver|cmsis|arch|soc", std::regex::icase);
+  return std::regex_search(Name, Regex);
 }
 
 bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
