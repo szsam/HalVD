@@ -32,9 +32,13 @@
 struct FindHALBypass : public llvm::AnalysisInfoMixin<FindHALBypass> {
   struct MMIOFunc : public FindMMIOFunc::MMIOFunc {
     MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent)
-      : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), InDegree(0) {}
+      : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), IsHal2(false), InDegree(0) {}
     bool IsHal;
+    bool IsHal2;
     int InDegree;
+    int TransClosureInDeg;
+    std::string FullPath;
+    std::string Dirname;
   };
 
   using Result = std::map<const llvm::Function *, MMIOFunc>;
@@ -54,6 +58,8 @@ private:
   bool isHalFuncRegex(const llvm::Function &F);
   bool isHalRegexInternal(const std::string &Name);
   void callGraphBasedHalIdent(llvm::CallGraph &CG);
+  void computeCallGraphInDegrees(llvm::CallGraph &CG);
+  void computeCallGraphTransClosure(llvm::CallGraph &CG);
 
   Result MMIOFuncMap;
 };

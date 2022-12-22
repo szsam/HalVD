@@ -47,6 +47,13 @@ FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
     const Function *F = Node.first;
     MMIOFunc MF = MMIOFunc(Node.second);
     MF.IsHal = isHalFunc(*F);
+    DISubprogram *DISub = F->getSubprogram();
+    DIFile *File = DISub->getFile();
+    std::string Filename(File->getFilename());
+    std::string Dir(File->getDirectory());
+    MF.FullPath = Dir + "/" + Filename;
+    size_t Found = MF.FullPath.find_last_of("/\\");
+    MF.Dirname = MF.FullPath.substr(0, Found);
     MMIOFuncMap.insert({F, MF});
   }
   CallGraph CG = CallGraph(M);
@@ -97,6 +104,66 @@ bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
 }
 
 void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
+  //computeCallGraphInDegrees(CG);
+  computeCallGraphTransClosure(CG);
+  std::vector<std::string> HalDirs;
+  for (auto &I : MMIOFuncMap) {
+    if (I.second.TransClosureInDeg >= 10) {
+      HalDirs.push_back(I.second.Dirname);
+    }
+  }
+  for (auto &I : MMIOFuncMap) {
+    if (std::find(HalDirs.begin(), HalDirs.end(),
+                  I.second.Dirname) != HalDirs.end()) {
+      I.second.IsHal2 = true;
+    }
+  }
+}
+
+void FindHALBypass::computeCallGraphTransClosure(llvm::CallGraph &CG) {
+  //CG.dump();
+  std::map<CallGraphNode *, int> CGN2Num;
+  int TotNumOfCGN= 0;
+
+  for (auto &I : CG) {
+    CGN2Num[I.second.get()] = TotNumOfCGN++;
+  }
+  CGN2Num[CG.getCallsExternalNode()] = TotNumOfCGN++;
+  std::vector<int> AdjMatrix(TotNumOfCGN * TotNumOfCGN, 0);
+  MY_DEBUG(dbgs() << "#vertices=" << TotNumOfCGN << "\n");
+
+  for (auto &I : CG) {
+    //const Function *Caller = I.first;
+    CallGraphNode *Caller = I.second.get();
+    for (auto &J : *I.second) {
+      //const Function *Callee = J.second->getFunction();
+      CallGraphNode *Callee = J.second;
+      AdjMatrix[CGN2Num.at(Caller) * TotNumOfCGN + CGN2Num.at(Callee)] = 1;
+    }
+  }
+
+  for (int K = 0; K < TotNumOfCGN; K++) {
+    for (int I = 0; I < TotNumOfCGN; I++) {
+      for (int J = 0; J < TotNumOfCGN; J++) {
+        // reach[i][j] = reach[i][j] || (reach[i][k] && reach[k][j]);
+        AdjMatrix[I * TotNumOfCGN + J] = AdjMatrix[I * TotNumOfCGN + J] ||
+          (AdjMatrix[I * TotNumOfCGN + K] && AdjMatrix[K * TotNumOfCGN + J]);
+      }
+    }
+  }
+
+  std::vector<int> InDegrees(TotNumOfCGN, 0);
+  for (int I = 0; I < TotNumOfCGN; I++) {
+    std::transform(AdjMatrix.begin() + I * TotNumOfCGN,
+                   AdjMatrix.begin() + (I+1) * TotNumOfCGN,
+                   InDegrees.begin(), InDegrees.begin(), std::plus<int>());
+  }
+  for (auto &I : MMIOFuncMap) {
+    I.second.TransClosureInDeg = InDegrees[CGN2Num.at(CG[I.first])];
+  }
+}
+
+void FindHALBypass::computeCallGraphInDegrees(llvm::CallGraph &CG) {
   for (auto &I : MMIOFuncMap) {
     I.second.InDegree = 0;
   }
@@ -223,6 +290,8 @@ static void printFuncs(raw_ostream &OutS,
     OutS << Node.first->getName() << " ";
     printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
     OutS << " " << Node.second.InDegree;
+    OutS << " " << Node.second.TransClosureInDeg;
+    OutS << " " << Node.second.IsHal2;
     OutS << "\n";
   }
 

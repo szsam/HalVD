@@ -5,7 +5,7 @@ BITCODE=/home/smj/purs3/nrf52-keyboard/keyboard/lot60-ble/_build/rev_c/nrf52_kbd
 #BITCODE=<root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc
 
 [project-init]
-command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) -DCMAKE_BUILD_TYPE=Debug ..
+command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) -DCMAKE_BUILD_TYPE=Release ..
 cwd=<root>
 errorformat=
 save=2
