@@ -31,8 +31,7 @@
 
 struct FindHALBypass : public llvm::AnalysisInfoMixin<FindHALBypass> {
   struct MMIOFunc : public FindMMIOFunc::MMIOFunc {
-    MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent)
-      : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), IsHal2(false), InDegree(0) {}
+    MMIOFunc(const FindMMIOFunc::MMIOFunc &, const llvm::Function *);
     bool IsHal;
     bool IsHal2;
     int InDegree;

@@ -45,21 +45,27 @@ FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
   MMIOFuncMap.clear();
   for (auto &Node : MMIOFuncs) {
     const Function *F = Node.first;
-    MMIOFunc MF = MMIOFunc(Node.second);
+    MMIOFunc MF = MMIOFunc(Node.second, F);
     MF.IsHal = isHalFunc(*F);
-    DISubprogram *DISub = F->getSubprogram();
-    DIFile *File = DISub->getFile();
-    std::string Filename(File->getFilename());
-    std::string Dir(File->getDirectory());
-    MF.FullPath = Dir + "/" + Filename;
-    size_t Found = MF.FullPath.find_last_of("/\\");
-    MF.Dirname = MF.FullPath.substr(0, Found);
     MMIOFuncMap.insert({F, MF});
   }
   CallGraph CG = CallGraph(M);
   callGraphBasedHalIdent(CG);
 
   return MMIOFuncMap;
+}
+
+FindHALBypass::MMIOFunc::MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent,
+                                  const Function *F)
+    : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), IsHal2(false),
+      InDegree(0), TransClosureInDeg(0) {
+  DISubprogram *DISub = F->getSubprogram();
+  DIFile *File = DISub->getFile();
+  std::string Filename(File->getFilename());
+  std::string Dir(File->getDirectory());
+  FullPath = Dir + "/" + Filename;
+  size_t Found = FullPath.find_last_of("/\\");
+  Dirname = FullPath.substr(0, Found);
 }
 
 bool FindHALBypass::isHalFunc(const llvm::Function &F) {
@@ -104,7 +110,7 @@ bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
 }
 
 void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
-  //computeCallGraphInDegrees(CG);
+  computeCallGraphInDegrees(CG);
   computeCallGraphTransClosure(CG);
   std::vector<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
