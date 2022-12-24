@@ -31,6 +31,8 @@
 #include "llvm/Passes/PassPlugin.h"
 #include <algorithm>
 #include <regex>
+#include <random>
+#include <queue>
 
 using namespace llvm;
 
@@ -142,7 +144,8 @@ void FindHALBypass::computeCallGraphTransClosure(llvm::CallGraph &CG) {
   }
   dbgs() << "#vertices=" << TotNumOfCGN << " #edges=" << NumOfEdges << "\n";
 
-  std::vector<int> InDegrees = runFloydWarshall(AdjMatrix, TotNumOfCGN);
+  //std::vector<int> InDegrees = runFloydWarshall(AdjMatrix, TotNumOfCGN);
+  std::vector<int> InDegrees = runTCEst(AdjMatrix, TotNumOfCGN);
 
   for (auto &I : MMIOFuncMap) {
     I.second.TransClosureInDeg = InDegrees[CGN2Num.at(CG[I.first])];
@@ -168,6 +171,75 @@ std::vector<int> FindHALBypass::runFloydWarshall(
                    InDegrees.begin(), InDegrees.begin(), std::plus<int>());
   }
   return InDegrees;
+}
+
+std::vector<int> FindHALBypass::runTCEst(
+    std::vector<int> &AdjMatrix, int TotNumOfCGN) {
+  // Transpose AdjMatrix
+  //for (int I = 0; I < TotNumOfCGN; I++) {
+  //  for (int J = 0; J < I; J++) {
+  //    // swap AdjMatrix[I][J] and AdjMatrix[J][I]
+  //    std::swap(AdjMatrix[I * TotNumOfCGN + J], AdjMatrix[J * TotNumOfCGN + I]);
+  //  }
+  //}
+
+  std::vector<double> RankLeastSum(TotNumOfCGN, 0.0);
+  std::vector<int> InDegrees(TotNumOfCGN);
+  int NumOfIter = 10;
+  for (int I = 0; I < NumOfIter; I++) {
+    auto RankLeast = runTCEstOneIter(AdjMatrix, TotNumOfCGN);
+    std::transform(RankLeast.begin(), RankLeast.end(), RankLeastSum.begin(),
+                   RankLeastSum.begin(), std::plus<double>());
+  }
+  std::transform(RankLeastSum.begin(), RankLeastSum.end(), InDegrees.begin(),
+                 [NumOfIter](double s) {
+                   return static_cast<int>(NumOfIter / s) - 1;
+                 });
+  return InDegrees;
+}
+
+std::vector<double> FindHALBypass::runTCEstOneIter(
+    std::vector<int> &AdjMatrix, int TotNumOfCGN) {
+  std::random_device RD;
+  std::mt19937 Gen(RD());
+  std::uniform_real_distribution<> UniformDis(0.0, 1.0);
+  std::vector<std::pair<int, double>> Rank;
+  Rank.reserve(TotNumOfCGN);
+  for (int I = 0; I < TotNumOfCGN; I++) {
+    Rank.push_back({I, UniformDis(Gen)});
+  }
+  std::sort(Rank.begin(), Rank.end(), [](auto &LHS, auto &RHS) {
+      return LHS.second < RHS.second;
+  });
+  //for (auto &I : Rank) {
+  //  dbgs() << I.first << " " << I.second << "\n";
+  //}
+
+  std::vector<double> RankLeast(TotNumOfCGN, 0.0);
+  std::vector<int> Visited(TotNumOfCGN, 0);
+  for (auto &Src : Rank) {
+    // BFS on Src.first
+    if (Visited[Src.first])
+      continue;
+    std::queue<int> BFSQueue;
+
+    BFSQueue.push(Src.first);
+    Visited[Src.first] = 1;
+    RankLeast[Src.first] = Src.second;
+
+    while (!BFSQueue.empty()) {
+      int U = BFSQueue.front();
+      BFSQueue.pop();
+      for (int V = 0; V < TotNumOfCGN; V++) {
+        if (AdjMatrix[U * TotNumOfCGN + V] == 0 || Visited[V])
+          continue;
+        BFSQueue.push(V);
+        Visited[V] = 1;
+        RankLeast[V] = Src.second;
+      }
+    }
+  }
+  return RankLeast;
 }
 
 void FindHALBypass::computeCallGraphInDegrees(llvm::CallGraph &CG) {

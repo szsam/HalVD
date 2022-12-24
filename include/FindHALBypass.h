@@ -60,6 +60,8 @@ private:
   void computeCallGraphInDegrees(llvm::CallGraph &CG);
   void computeCallGraphTransClosure(llvm::CallGraph &CG);
   std::vector<int> runFloydWarshall(std::vector<int> &AdjMatrix, int);
+  std::vector<int> runTCEst(std::vector<int> &AdjMatrix, int);
+  std::vector<double> runTCEstOneIter(std::vector<int> &AdjMatrix, int);
 
   Result MMIOFuncMap;
 };
