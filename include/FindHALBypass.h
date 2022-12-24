@@ -59,6 +59,7 @@ private:
   void callGraphBasedHalIdent(llvm::CallGraph &CG);
   void computeCallGraphInDegrees(llvm::CallGraph &CG);
   void computeCallGraphTransClosure(llvm::CallGraph &CG);
+  std::vector<int> runFloydWarshall(std::vector<int> &AdjMatrix, int);
 
   Result MMIOFuncMap;
 };

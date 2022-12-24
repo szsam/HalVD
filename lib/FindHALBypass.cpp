@@ -128,8 +128,8 @@ void FindHALBypass::computeCallGraphTransClosure(llvm::CallGraph &CG) {
   }
   CGN2Num[CG.getCallsExternalNode()] = TotNumOfCGN++;
   std::vector<int> AdjMatrix(TotNumOfCGN * TotNumOfCGN, 0);
-  MY_DEBUG(dbgs() << "#vertices=" << TotNumOfCGN << "\n");
 
+  int NumOfEdges = 0;
   for (auto &I : CG) {
     //const Function *Caller = I.first;
     CallGraphNode *Caller = I.second.get();
@@ -137,9 +137,20 @@ void FindHALBypass::computeCallGraphTransClosure(llvm::CallGraph &CG) {
       //const Function *Callee = J.second->getFunction();
       CallGraphNode *Callee = J.second;
       AdjMatrix[CGN2Num.at(Caller) * TotNumOfCGN + CGN2Num.at(Callee)] = 1;
+      NumOfEdges++;
     }
   }
+  dbgs() << "#vertices=" << TotNumOfCGN << " #edges=" << NumOfEdges << "\n";
 
+  std::vector<int> InDegrees = runFloydWarshall(AdjMatrix, TotNumOfCGN);
+
+  for (auto &I : MMIOFuncMap) {
+    I.second.TransClosureInDeg = InDegrees[CGN2Num.at(CG[I.first])];
+  }
+}
+
+std::vector<int> FindHALBypass::runFloydWarshall(
+    std::vector<int> &AdjMatrix, int TotNumOfCGN) {
   for (int K = 0; K < TotNumOfCGN; K++) {
     for (int I = 0; I < TotNumOfCGN; I++) {
       for (int J = 0; J < TotNumOfCGN; J++) {
@@ -156,9 +167,7 @@ void FindHALBypass::computeCallGraphTransClosure(llvm::CallGraph &CG) {
                    AdjMatrix.begin() + (I+1) * TotNumOfCGN,
                    InDegrees.begin(), InDegrees.begin(), std::plus<int>());
   }
-  for (auto &I : MMIOFuncMap) {
-    I.second.TransClosureInDeg = InDegrees[CGN2Num.at(CG[I.first])];
-  }
+  return InDegrees;
 }
 
 void FindHALBypass::computeCallGraphInDegrees(llvm::CallGraph &CG) {
