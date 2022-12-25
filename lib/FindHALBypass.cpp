@@ -33,6 +33,7 @@
 #include <regex>
 #include <random>
 #include <queue>
+#include <set>
 
 using namespace llvm;
 
@@ -104,23 +105,22 @@ bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
 }
 
 void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
-  computeCallGraphInDegrees(CG);
-  computeCallGraphTransClosure(CG);
-  std::vector<std::string> HalDirs;
+  computeCallGraphInDeg(CG);
+  computeCallGraphTCInDeg(CG);
+  std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
     if (I.second.TransClosureInDeg >= 10) {
-      HalDirs.push_back(I.second.Dirname);
+      HalDirs.insert(I.second.Dirname);
     }
   }
   for (auto &I : MMIOFuncMap) {
-    if (std::find(HalDirs.begin(), HalDirs.end(),
-                  I.second.Dirname) != HalDirs.end()) {
+    if (HalDirs.find(I.second.Dirname) != HalDirs.end() ) {
       I.second.IsHal2 = true;
     }
   }
 }
 
-void FindHALBypass::computeCallGraphTransClosure(llvm::CallGraph &CG) {
+void FindHALBypass::computeCallGraphTCInDeg(llvm::CallGraph &CG) {
   //CG.dump();
   std::map<CallGraphNode *, int> CGN2Num;
   int TotNumOfCGN= 0;
@@ -242,7 +242,7 @@ std::vector<double> FindHALBypass::runTCEstOneIter(
   return RankLeast;
 }
 
-void FindHALBypass::computeCallGraphInDegrees(llvm::CallGraph &CG) {
+void FindHALBypass::computeCallGraphInDeg(llvm::CallGraph &CG) {
   for (auto &I : MMIOFuncMap) {
     I.second.InDegree = 0;
   }

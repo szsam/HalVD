@@ -57,8 +57,8 @@ private:
   bool isHalFuncRegex(const llvm::Function &F);
   bool isHalRegexInternal(const std::string &Name);
   void callGraphBasedHalIdent(llvm::CallGraph &CG);
-  void computeCallGraphInDegrees(llvm::CallGraph &CG);
-  void computeCallGraphTransClosure(llvm::CallGraph &CG);
+  void computeCallGraphInDeg(llvm::CallGraph &CG);
+  void computeCallGraphTCInDeg(llvm::CallGraph &CG);
   std::vector<int> runFloydWarshall(std::vector<int> &AdjMatrix, int);
   std::vector<int> runTCEst(std::vector<int> &AdjMatrix, int);
   std::vector<double> runTCEstOneIter(std::vector<int> &AdjMatrix, int);
