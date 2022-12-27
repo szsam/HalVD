@@ -118,6 +118,15 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
       I.second.IsHal2 = true;
     }
   }
+  auto CntTruePos = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+      [](auto &I) { return I.second.IsHal && I.second.IsHal2; });
+  auto CntSelected = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+      [](auto &I) { return I.second.IsHal2; });
+  auto CntRelevant = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+      [](auto &I) { return I.second.IsHal; });
+  errs() << "precision=" << static_cast<float>(CntTruePos) / CntSelected
+         << " recall=" << static_cast<float>(CntTruePos) / CntRelevant
+         << "\n";
 }
 
 void FindHALBypass::computeCallGraphTCInDeg(llvm::CallGraph &CG) {
