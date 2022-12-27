@@ -77,7 +77,8 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
 }
 
 bool FindHALBypass::isHalRegexInternal(const std::string &Name) {
-  std::regex Regex("hal(?!t)|driver|cmsis|arch|soc", std::regex::icase);
+  std::regex Regex("hal(?!t)|driver|cmsis|arch|soc|npl|freertos",
+                   std::regex::icase);
   return std::regex_search(Name, Regex);
 }
 
@@ -109,7 +110,7 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   computeCallGraphTCInDeg(CG);
   std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
-    if (I.second.TransClosureInDeg >= 10) {
+    if (I.second.TransClosureInDeg >= 15) {
       HalDirs.insert(I.second.Dirname);
     }
   }
