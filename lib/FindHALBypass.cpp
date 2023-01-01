@@ -34,6 +34,7 @@
 #include <random>
 #include <queue>
 #include <set>
+#include <cmath>
 
 using namespace llvm;
 
@@ -76,10 +77,12 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
   return isHalFuncRegex(F);
 }
 
-bool FindHALBypass::isHalRegexInternal(const std::string &Name) {
-  std::regex Regex("hal(?!t)|driver|cmsis|arch|soc|npl|freertos",
+bool FindHALBypass::isHalRegexInternal(std::string Name) {
+  std::regex ProjRe("Amazfitbip-FreeRTOS|RP2040-FreeRTOS");
+  Name = std::regex_replace(Name, ProjRe, "");
+  std::regex HalRe("hal(?!t)|driver|cmsis|arch|soc|npl|freertos|lib",
                    std::regex::icase);
-  return std::regex_search(Name, Regex);
+  return std::regex_search(Name, HalRe);
 }
 
 bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
@@ -110,7 +113,7 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   computeCallGraphTCInDeg(CG);
   std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
-    if (I.second.TransClosureInDeg >= 15) {
+    if (I.second.TransClosureInDeg >= CallGraphTCInDegPctl(75.0)) {
       HalDirs.insert(I.second.Dirname);
     }
   }
@@ -119,15 +122,29 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
       I.second.IsHal2 = true;
     }
   }
-  auto CntTruePos = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
-      [](auto &I) { return I.second.IsHal && I.second.IsHal2; });
-  auto CntSelected = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
-      [](auto &I) { return I.second.IsHal2; });
-  auto CntRelevant = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
-      [](auto &I) { return I.second.IsHal; });
-  errs() << "precision=" << static_cast<float>(CntTruePos) / CntSelected
-         << " recall=" << static_cast<float>(CntTruePos) / CntRelevant
-         << "\n";
+//  auto CntTruePos = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+//      [](auto &I) { return I.second.IsHal && I.second.IsHal2; });
+//  auto CntSelected = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+//      [](auto &I) { return I.second.IsHal2; });
+//  auto CntRelevant = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+//      [](auto &I) { return I.second.IsHal; });
+//  errs() << "HAL precision=" << CntTruePos << "/" << CntSelected << "="
+//         << static_cast<float>(CntTruePos) / CntSelected
+//         << " recall=" << CntTruePos << "/" << CntRelevant << "="
+//         << static_cast<float>(CntTruePos) / CntRelevant
+//         << "\n";
+//
+//  auto CntTruePosN = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+//      [](auto &I) { return !I.second.IsHal && !I.second.IsHal2; });
+//  auto CntSelectedN = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+//      [](auto &I) { return !I.second.IsHal2; });
+//  auto CntRelevantN = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
+//      [](auto &I) { return !I.second.IsHal; });
+//  errs() << "Non-HAL precision=" << CntTruePosN << "/" << CntSelectedN << "="
+//         << static_cast<float>(CntTruePosN) / CntSelectedN
+//         << " recall=" << CntTruePosN << "/" << CntRelevantN << "="
+//         << static_cast<float>(CntTruePosN) / CntRelevantN
+//         << "\n";
 }
 
 void FindHALBypass::computeCallGraphTCInDeg(llvm::CallGraph &CG) {
@@ -203,7 +220,7 @@ std::vector<int> FindHALBypass::runTCEst(
   }
   std::transform(RankLeastSum.begin(), RankLeastSum.end(), InDegrees.begin(),
                  [NumOfIter](double s) {
-                   return static_cast<int>(NumOfIter / s) - 1;
+                   return std::round(NumOfIter / s) - 1;
                  });
   return InDegrees;
 }
@@ -269,6 +286,18 @@ void FindHALBypass::computeCallGraphInDeg(llvm::CallGraph &CG) {
       }
     }
   }
+}
+
+int FindHALBypass::CallGraphTCInDegPctl(double percent) {
+  std::vector<int> InDegs;
+  InDegs.reserve(MMIOFuncMap.size());
+
+  for (const auto &I : MMIOFuncMap)
+    InDegs.push_back(I.second.TransClosureInDeg);
+
+  auto Nth = InDegs.begin() + percent / 100.0 * InDegs.size();
+  std::nth_element(InDegs.begin(), Nth, InDegs.end());
+  return *Nth;
 }
 
 PreservedAnalyses FindHALBypassPrinter::run(Module &M,
@@ -371,7 +400,7 @@ static void printFuncs(raw_ostream &OutS,
   OutS << "================================================="
        << "\n";
   OutS << "LLVM-TUTOR: " << Str << " (# = " << MMIOFuncs.size() << ")\n";
-  OutS << "Function, Location of MMIO inst\n";
+  OutS << "Function, Location of MMIO inst, In-degree, TC In-degree\n";
   OutS << "-------------------------------------------------"
        << "\n";
 
@@ -380,7 +409,6 @@ static void printFuncs(raw_ostream &OutS,
     printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
     OutS << " " << Node.second.InDegree;
     OutS << " " << Node.second.TransClosureInDeg;
-    OutS << " " << Node.second.IsHal2;
     OutS << "\n";
   }
 
@@ -388,16 +416,32 @@ static void printFuncs(raw_ostream &OutS,
        << "\n\n";
 }
 
+static inline void printStatistics(raw_ostream &OutS, const char *Caption,
+                                   size_t S1, size_t S2) {
+  OutS << Caption<< S1 << "/" << S2 << "=" << static_cast<float>(S1) / S2 << " ";
+}
+
 static void printHALBypassResult(raw_ostream &OutS,
                                  const FindHALBypass::Result &MMIOFuncs) {
-  FindHALBypass::Result AppFuncs;
-  FindHALBypass::Result LibHalFuncs;
+  //FindHALBypass::Result AppFuncs;
+  //FindHALBypass::Result LibHalFuncs;
+  FindHALBypass::Result TPFuncs, FPFuncs, FNFuncs, TNFuncs;
   for (auto &Node : MMIOFuncs) {
-    if (!Node.second.IsHal)
-      AppFuncs.insert(Node);
+    if (!Node.second.IsHal && !Node.second.IsHal2)
+      TPFuncs.insert(Node);
+    else if (Node.second.IsHal && !Node.second.IsHal2)
+      FPFuncs.insert(Node);
+    else if (!Node.second.IsHal && Node.second.IsHal2)
+      FNFuncs.insert(Node);
     else
-      LibHalFuncs.insert(Node);
+      TNFuncs.insert(Node);
   }
-  printFuncs(OutS, AppFuncs,       "Application MMIO functions");
-  printFuncs(OutS, LibHalFuncs,    "Hal MMIO functions");
+  printFuncs(OutS, TPFuncs, "True Positive: Non-conventional MMIO functions");
+  printFuncs(OutS, FPFuncs, "False Positive: Incorrectly identified as Non-conventional MMIO functions");
+  printFuncs(OutS, FNFuncs, "False Negative: Missed Non-conventional MMIO functions");
+  printFuncs(OutS, TNFuncs, "True Negative: Conventional (HAL) MMIO functions");
+  printStatistics(OutS, "precision(PPV)=", TPFuncs.size(), TPFuncs.size() + FPFuncs.size());
+  printStatistics(OutS, "recall(TPR)="   , TPFuncs.size(), TPFuncs.size() + FNFuncs.size());
+  printStatistics(OutS, "NPV="           , TNFuncs.size(), TNFuncs.size() + FNFuncs.size());
+  printStatistics(OutS, "TNR="           , TNFuncs.size(), TNFuncs.size() + FPFuncs.size());
 }
