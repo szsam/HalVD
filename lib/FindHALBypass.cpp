@@ -65,6 +65,7 @@ FindHALBypass::MMIOFunc::MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent,
     : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), IsHal2(false),
       InDegree(0), TransClosureInDeg(0) {
   DISubprogram *DISub = F->getSubprogram();
+  if (!DISub) return;
   DIFile *File = DISub->getFile();
   std::string Filename(File->getFilename());
   std::string Dir(File->getDirectory());
@@ -78,9 +79,11 @@ bool FindHALBypass::isHalFunc(const llvm::Function &F) {
 }
 
 bool FindHALBypass::isHalRegexInternal(std::string Name) {
-  std::regex ProjRe("Amazfitbip-FreeRTOS|RP2040-FreeRTOS");
+  std::regex ProjRe("Amazfitbip-FreeRTOS|RP2040-FreeRTOS|"
+                    "(blockingmqtt|dualport|ipcommdevice)_freertos");
   Name = std::regex_replace(Name, ProjRe, "");
-  std::regex HalRe("hal(?!t)|driver|cmsis|arch|soc|npl|freertos|lib",
+  std::regex HalRe("hal(?!t)|driver|cmsis|arch|soc|npl|freertos|lib|kernel|"
+                   "sdk|esp-idf/components",
                    std::regex::icase);
   return std::regex_search(Name, HalRe);
 }
@@ -113,7 +116,8 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   computeCallGraphTCInDeg(CG);
   std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
-    if (I.second.TransClosureInDeg >= CallGraphTCInDegPctl(75.0)) {
+    //if (I.second.TransClosureInDeg >= CallGraphTCInDegPctl(75.0)) {
+    if (I.second.TransClosureInDeg >= 10) {
       HalDirs.insert(I.second.Dirname);
     }
   }
