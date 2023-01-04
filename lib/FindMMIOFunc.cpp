@@ -71,12 +71,14 @@ bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
 void FindMMIOFunc::findMMIOFunc(Module &M, Result &MMIOFuncs) {
   for (auto &Func : M) {
     for (auto &Ins : instructions(Func)) {
-      if (isMMIOInst(&Ins)) {
-        MY_DEBUG(dbgs() << "MMIO func: " << Func.getName() << "\n");
-        // MMIOFuncs[&Func] = MMIOFunc(&Ins);
-        MMIOFuncs.insert({&Func, MMIOFunc(&Ins)});
-        break;
-      }
+      if (!isMMIOInst(&Ins))
+        continue;
+      if (Ins.getDebugLoc() && Ins.getDebugLoc().getInlinedAt())
+        continue;
+      MY_DEBUG(dbgs() << "MMIO func: " << Func.getName() << "\n");
+      // MMIOFuncs[&Func] = MMIOFunc(&Ins);
+      MMIOFuncs.insert({&Func, MMIOFunc(&Ins)});
+      break;
     }
   }
 }
