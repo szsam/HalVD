@@ -83,7 +83,7 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
                     "(blockingmqtt|dualport|ipcommdevice)_freertos");
   Name = std::regex_replace(Name, ProjRe, "");
   std::regex HalRe("hal(?!t)|driver|cmsis|arch|soc|npl|freertos|lib|kernel|"
-                   "sdk|esp-idf/components",
+                   "sdk|esp-idf/components|mbed-os/",
                    std::regex::icase);
   return std::regex_search(Name, HalRe);
 }
