@@ -82,8 +82,13 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
   std::regex ProjRe("Amazfitbip-FreeRTOS|RP2040-FreeRTOS|"
                     "(blockingmqtt|dualport|ipcommdevice)_freertos");
   Name = std::regex_replace(Name, ProjRe, "");
-  std::regex HalRe("hal(?!t)|driver|cmsis|arch|soc|npl|freertos|lib|kernel|"
-                   "sdk|esp-idf/components|mbed-os/",
+  //hal(?!t)
+  std::regex HalRe("(\\b|_)(hal|drivers?|cmsis|arch|soc|"
+                   "npl|"  // NimBLE Porting Layer (NPL)
+                   "nrfx|"  // peripheral drivers for Nordic SoCs
+                   "zephyr/subsys/bluetooth/controller|"
+                   "esp-idf/components"
+                   ")(\\b|_)",
                    std::regex::icase);
   return std::regex_search(Name, HalRe);
 }
