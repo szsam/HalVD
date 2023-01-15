@@ -62,6 +62,7 @@ private:
   bool isMMIOInst_(llvm::Instruction *Ins);
   bool isMMIOInst(llvm::Instruction *Ins);
   void findMMIOFunc(llvm::Module &M, Result &MMIOFuncs);
+  bool ignoreFunc(llvm::Function &F);
 };
 
 //------------------------------------------------------------------------------

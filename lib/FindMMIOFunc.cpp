@@ -29,6 +29,7 @@
 #include "llvm/Analysis/CallGraph.h"
 #include "llvm/Passes/PassBuilder.h"
 #include "llvm/Passes/PassPlugin.h"
+#include <regex>
 
 using namespace llvm;
 
@@ -70,6 +71,8 @@ bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
 
 void FindMMIOFunc::findMMIOFunc(Module &M, Result &MMIOFuncs) {
   for (auto &Func : M) {
+    if (ignoreFunc(Func))
+      continue;
     for (auto &Ins : instructions(Func)) {
       if (!isMMIOInst(&Ins))
         continue;
@@ -81,6 +84,22 @@ void FindMMIOFunc::findMMIOFunc(Module &M, Result &MMIOFuncs) {
       break;
     }
   }
+}
+
+// Ugly workaround to filter out functions that call macro HAL functions
+bool FindMMIOFunc::ignoreFunc(llvm::Function &F) {
+  DISubprogram *DISub = F.getSubprogram();
+  if (!DISub) return false;
+  DIFile *File = DISub->getFile();
+  std::string FullPath = std::string(File->getDirectory()) + "/"
+                         + std::string(File->getFilename());
+  std::regex PathRe("freertos.*(queue|tasks|timers)\\.c", std::regex::icase);
+  if (std::regex_search(FullPath, PathRe))
+    return true;
+  std::regex FuncRe("Pinetime.*PushMessage|nrfx_gpiote_evt_handler");
+  if (F.hasName() && std::regex_search(std::string(F.getName()), FuncRe))
+    return true;
+  return false;
 }
 
 FindMMIOFunc::Result FindMMIOFunc::runOnModule(Module &M) {
