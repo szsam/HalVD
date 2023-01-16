@@ -83,7 +83,7 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
                     "(blockingmqtt|dualport|ipcommdevice)_freertos");
   Name = std::regex_replace(Name, ProjRe, "");
   //hal(?!t)
-  std::regex HalRe("(\\b|_)(hal|drivers?|cmsis|arch|soc|"
+  std::regex HalRe("(\\b|_)(hal|drivers?|cmsis|arch|soc|boards?|"
                    "npl|"  // NimBLE Porting Layer (NPL)
                    "nrfx|"  // peripheral drivers for Nordic SoCs
                    "zephyr/subsys/bluetooth/controller|"
