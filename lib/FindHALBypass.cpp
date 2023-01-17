@@ -82,15 +82,17 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
   std::regex ProjRe("Amazfitbip-FreeRTOS|RP2040-FreeRTOS|"
                     "(blockingmqtt|dualport|ipcommdevice)_freertos");
   Name = std::regex_replace(Name, ProjRe, "");
-  //hal(?!t)
-  std::regex HalRe("(\\b|_)(hal|drivers?|cmsis|arch|soc|boards?|"
+
+  std::regex HalRe("(?!.*zephyr/samples)" // Does not contain "zephyr/samples"
+                   ".*(^|[^[:alpha:]])" // Word boundary
+                   "(hal|drivers?|cmsis|arch|soc|boards?|"
                    "npl|"  // NimBLE Porting Layer (NPL)
                    "nrfx|"  // peripheral drivers for Nordic SoCs
                    "zephyr/subsys/bluetooth/controller|"
                    "esp-idf/components"
-                   ")(\\b|_)",
+                   ")($|[^[:alpha:]]).*",
                    std::regex::icase);
-  return std::regex_search(Name, HalRe);
+  return std::regex_match(Name, HalRe);
 }
 
 bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
@@ -107,8 +109,9 @@ bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
   std::string LinkageName(DISub->getLinkageName());
   std::string Filename(File->getFilename());
   std::string Dir(File->getDirectory());
-  if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
-      || isHalRegexInternal(Filename) || isHalRegexInternal(Dir)) {
+  //if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
+  //    || isHalRegexInternal(Filename) || isHalRegexInternal(Dir)) {
+  if (isHalRegexInternal(Dir + "/" + Filename)) {
     MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
                     << LinkageName << " " << Filename << "\n");
     return true;
