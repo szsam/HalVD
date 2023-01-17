@@ -89,6 +89,8 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
                    "npl|"  // NimBLE Porting Layer (NPL)
                    "nrfx|"  // peripheral drivers for Nordic SoCs
                    "zephyr/subsys/bluetooth/controller|"
+                   "mbed-os/targets|"
+                   //"mbed-os/platform/.*(mbed_fault_handler\\.c|SysTimer\\.cpp)|" // ???
                    "esp-idf/components"
                    ")($|[^[:alpha:]]).*",
                    std::regex::icase);
