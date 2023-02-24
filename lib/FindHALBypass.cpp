@@ -85,13 +85,23 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
 
   std::regex HalRe("(?!.*zephyr/samples)" // Does not contain "zephyr/samples"
                    ".*(^|[^[:alpha:]])" // Word boundary
-                   "(hal|drivers?|cmsis|arch|soc|boards?|"
-                   "npl|"  // NimBLE Porting Layer (NPL)
-                   "nrfx|"  // peripheral drivers for Nordic SoCs
-                   "zephyr/subsys/bluetooth/controller|"
-                   "mbed-os/targets|"
-                   //"mbed-os/platform/.*(mbed_fault_handler\\.c|SysTimer\\.cpp)|" // ???
-                   "esp-idf/components"
+                   "(hal|drivers?|cmsis|arch|soc|boards?|irq|isr"
+                   "|port(able)?|spi|hardware"
+                   // below are project-specific patterns
+                   "|npl"  // NimBLE Porting Layer (NPL)
+                   "|nrfx"  // peripheral drivers for Nordic SoCs
+                   "|libopencm3"
+                   "|zephyr/subsys/bluetooth/controller"
+                   "|mbed-os/targets"
+                   //"|mbed-os/platform"
+                   "|avm"  // Avem/libs/module/avm_*.[ch]
+                   "|plo/devices" // phoenix-rtos
+                   "|esp-idf/components/(esp_hw_support|esp_system|bootloader_support|"
+                   "esp_phy|esp_timer|ulp)"
+                   "|system_stm32f4xx\\.c"
+                   // Debug purpose
+                   //"|print_context_info" // mbed
+                   //"|nx_start_application" // nuttx
                    ")($|[^[:alpha:]]).*",
                    std::regex::icase);
   return std::regex_match(Name, HalRe);
@@ -113,7 +123,8 @@ bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
   std::string Dir(File->getDirectory());
   //if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
   //    || isHalRegexInternal(Filename) || isHalRegexInternal(Dir)) {
-  if (isHalRegexInternal(Dir + "/" + Filename)) {
+  if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
+      || isHalRegexInternal(Dir + "/" + Filename)) {
     MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
                     << LinkageName << " " << Filename << "\n");
     return true;
@@ -410,19 +421,22 @@ static void printDebugLoc(raw_ostream &OS, const DebugLoc &DL) {
 
 static void printFuncs(raw_ostream &OutS,
                        const FindHALBypass::Result &MMIOFuncs,
-                       const char *Str) {
+                       const char *Str, const char *Head) {
   OutS << "================================================="
        << "\n";
   OutS << "LLVM-TUTOR: " << Str << " (# = " << MMIOFuncs.size() << ")\n";
-  OutS << "Function, Location of MMIO inst, In-degree, TC In-degree\n";
+  OutS << "Function, Location of MMIO inst, TC In-degree, IsHal(regex), IsHal(CG)\n";
   OutS << "-------------------------------------------------"
        << "\n";
 
   for (auto &Node : MMIOFuncs) {
+    OutS << Head << ": ";
     OutS << Node.first->getName() << " ";
     printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
-    OutS << " " << Node.second.InDegree;
+    //OutS << " " << Node.second.InDegree;
     OutS << " " << Node.second.TransClosureInDeg;
+    OutS << " " << Node.second.IsHal;
+    OutS << " " << Node.second.IsHal2;
     OutS << "\n";
   }
 
@@ -439,23 +453,26 @@ static void printHALBypassResult(raw_ostream &OutS,
                                  const FindHALBypass::Result &MMIOFuncs) {
   //FindHALBypass::Result AppFuncs;
   //FindHALBypass::Result LibHalFuncs;
-  FindHALBypass::Result TPFuncs, FPFuncs, FNFuncs, TNFuncs;
+  //FindHALBypass::Result TPFuncs, FPFuncs, FNFuncs, TNFuncs;
+  FindHALBypass::Result NonConv, Conv;
   for (auto &Node : MMIOFuncs) {
     if (!Node.second.IsHal && !Node.second.IsHal2)
-      TPFuncs.insert(Node);
-    else if (Node.second.IsHal && !Node.second.IsHal2)
-      FPFuncs.insert(Node);
-    else if (!Node.second.IsHal && Node.second.IsHal2)
-      FNFuncs.insert(Node);
+      NonConv.insert(Node);
+    //else if (Node.second.IsHal && !Node.second.IsHal2)
+    //  FPFuncs.insert(Node);
+    //else if (!Node.second.IsHal && Node.second.IsHal2)
+    //  FNFuncs.insert(Node);
     else
-      TNFuncs.insert(Node);
+      Conv.insert(Node);
   }
-  printFuncs(OutS, TPFuncs, "True Positive: Non-conventional MMIO functions");
-  printFuncs(OutS, FPFuncs, "False Positive: Incorrectly identified as Non-conventional MMIO functions");
-  printFuncs(OutS, FNFuncs, "False Negative: Missed Non-conventional MMIO functions");
-  printFuncs(OutS, TNFuncs, "True Negative: Conventional (HAL) MMIO functions");
-  printStatistics(OutS, "precision(PPV)=", TPFuncs.size(), TPFuncs.size() + FPFuncs.size());
-  printStatistics(OutS, "recall(TPR)="   , TPFuncs.size(), TPFuncs.size() + FNFuncs.size());
-  printStatistics(OutS, "NPV="           , TNFuncs.size(), TNFuncs.size() + FNFuncs.size());
-  printStatistics(OutS, "TNR="           , TNFuncs.size(), TNFuncs.size() + FPFuncs.size());
+  printFuncs(OutS, NonConv, "Non-conventional MMIO functions", "Non-HAL");
+  printFuncs(OutS, Conv, "Conventional (HAL) MMIO functions", "HAL");
+  //printFuncs(OutS, TPFuncs, "True Positive: Non-conventional MMIO functions");
+  //printFuncs(OutS, FPFuncs, "False Positive: Incorrectly identified as Non-conventional MMIO functions");
+  //printFuncs(OutS, FNFuncs, "False Negative: Missed Non-conventional MMIO functions");
+  //printFuncs(OutS, TNFuncs, "True Negative: Conventional (HAL) MMIO functions");
+  //printStatistics(OutS, "precision(PPV)=", TPFuncs.size(), TPFuncs.size() + FPFuncs.size());
+  //printStatistics(OutS, "recall(TPR)="   , TPFuncs.size(), TPFuncs.size() + FNFuncs.size());
+  //printStatistics(OutS, "NPV="           , TNFuncs.size(), TNFuncs.size() + FNFuncs.size());
+  //printStatistics(OutS, "TNR="           , TNFuncs.size(), TNFuncs.size() + FPFuncs.size());
 }

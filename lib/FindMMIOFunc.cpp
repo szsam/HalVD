@@ -93,7 +93,10 @@ bool FindMMIOFunc::ignoreFunc(llvm::Function &F) {
   DIFile *File = DISub->getFile();
   std::string FullPath = std::string(File->getDirectory()) + "/"
                          + std::string(File->getFilename());
-  std::regex PathRe("freertos.*(queue|tasks|timers)\\.c", std::regex::icase);
+  std::regex PathRe("(freertos.*(queue|tasks|timers|event_groups)\\.c"
+                    "|freertos-plus-tcp/tools/tcp_utilities/tcp_netstat\\.c"
+                    "|Cicada-FW)",
+                    std::regex::icase);
   if (std::regex_search(FullPath, PathRe))
     return true;
   std::regex FuncRe("Pinetime.*PushMessage|nrfx_gpiote_evt_handler");
