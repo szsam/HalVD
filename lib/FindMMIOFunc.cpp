@@ -95,11 +95,13 @@ bool FindMMIOFunc::ignoreFunc(llvm::Function &F) {
                          + std::string(File->getFilename());
   std::regex PathRe("(freertos.*(queue|tasks|timers|event_groups)\\.c"
                     "|freertos-plus-tcp/tools/tcp_utilities/tcp_netstat\\.c"
-                    "|Cicada-FW)",
+                    //"|Cicada-FW"
+                    ")",
                     std::regex::icase);
   if (std::regex_search(FullPath, PathRe))
     return true;
-  std::regex FuncRe("Pinetime.*PushMessage|nrfx_gpiote_evt_handler");
+  // USB_Send_Message is in Embedded-GUI-for-MT2523/middleware/MTK/usb/src/_common/usb_main.c:135:9
+  std::regex FuncRe("Pinetime.*PushMessage|nrfx_gpiote_evt_handler|USB_Send_Message");
   if (F.hasName() && std::regex_search(std::string(F.getName()), FuncRe))
     return true;
   return false;
