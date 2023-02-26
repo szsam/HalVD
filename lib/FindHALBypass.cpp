@@ -35,12 +35,15 @@
 #include <queue>
 #include <set>
 #include <cmath>
+#include <climits>
+#include <cstdlib>
 
 using namespace llvm;
 
 // Pretty-prints the result of this analysis
 static void printHALBypassResult(llvm::raw_ostream &OutS,
                                  const FindHALBypass::Result &);
+static std::string resolvePath(StringRef Dir, StringRef Filename);
 
 //------------------------------------------------------------------------------
 // FindHALBypass Implementation
@@ -84,6 +87,7 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
   Name = std::regex_replace(Name, ProjRe, "");
 
   std::regex HalRe("(?!.*zephyr/samples)" // Does not contain "zephyr/samples"
+                   "(?!.*hal_examples)" // Does not contain "hal_examples"
                    ".*(^|[^[:alpha:]])" // Word boundary
                    "(hal|drivers?|cmsis|arch|soc|boards?|irq|isr"
                    "|port(able)?|spi|hardware"
@@ -98,7 +102,7 @@ bool FindHALBypass::isHalRegexInternal(std::string Name) {
                    "|plo/devices" // phoenix-rtos
                    "|esp-idf/components/(esp_hw_support|esp_system|bootloader_support|"
                    "esp_phy|esp_timer|ulp)"
-                   "|system_stm32f4xx\\.c"
+                   "|system_stm32f4xx\\.c"  // STM32_BASE
                    // Debug purpose
                    //"|print_context_info" // mbed
                    //"|nx_start_application" // nuttx
@@ -119,12 +123,13 @@ bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
 
   std::string Name(DISub->getName());
   std::string LinkageName(DISub->getLinkageName());
-  std::string Filename(File->getFilename());
-  std::string Dir(File->getDirectory());
-  //if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
-  //    || isHalRegexInternal(Filename) || isHalRegexInternal(Dir)) {
+  //std::string Filename(File->getFilename());
+  //std::string Dir(File->getDirectory());
+  //std::string AbsPath(Dir + "/" + Filename);
+  std::string ResolvedPath(resolvePath(File->getDirectory(), File->getFilename()));
+
   if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
-      || isHalRegexInternal(Dir + "/" + Filename)) {
+      || isHalRegexInternal(ResolvedPath)) {
     MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
                     << LinkageName << " " << Filename << "\n");
     return true;
@@ -138,7 +143,7 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
     //if (I.second.TransClosureInDeg >= CallGraphTCInDegPctl(75.0)) {
-    if (I.second.TransClosureInDeg >= 10) {
+    if (I.second.TransClosureInDeg >= 50) {
       HalDirs.insert(I.second.Dirname);
     }
   }
@@ -399,15 +404,21 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Helper functions
 //------------------------------------------------------------------------------
+static std::string resolvePath(StringRef Dir, StringRef Filename) {
+  std::string FullPath = std::string(Dir) + "/" + std::string(Filename);
+  char *ResolvedPath = realpath(FullPath.c_str(), NULL);
+  std::string Ret = ResolvedPath ? std::string(ResolvedPath) : FullPath;
+  free(ResolvedPath);
+  return Ret;
+}
+
 static void printDebugLoc(raw_ostream &OS, const DebugLoc &DL) {
   if (!DL)
     return;
 
    // Print source line info.
    auto *Scope = cast<DIScope>(DL.getScope());
-   OS << Scope->getDirectory();
-   OS << "/";
-   OS << Scope->getFilename();
+   OS << resolvePath(Scope->getDirectory(), Scope->getFilename());
    OS << ':' << DL.getLine();
    if (DL.getCol() != 0)
      OS << ':' << DL.getCol();
