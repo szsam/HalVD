@@ -54,7 +54,6 @@ FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
   for (auto &Node : MMIOFuncs) {
     const Function *F = Node.first;
     MMIOFunc MF = MMIOFunc(Node.second, F);
-    MF.IsHal = isHalFunc(*F);
     MMIOFuncMap.insert({F, MF});
   }
   CallGraph CG = CallGraph(M);
@@ -65,76 +64,73 @@ FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
 
 FindHALBypass::MMIOFunc::MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent,
                                   const Function *F)
-    : FindMMIOFunc::MMIOFunc(Parent), IsHal(false), IsHal2(false),
+    : FindMMIOFunc::MMIOFunc(Parent), F(F), IsHalPattern(false), IsHalCG(false),
       InDegree(0), TransClosureInDeg(0) {
   DISubprogram *DISub = F->getSubprogram();
   if (!DISub) return;
   DIFile *File = DISub->getFile();
   std::string Filename(File->getFilename());
   std::string Dir(File->getDirectory());
-  FullPath = Dir + "/" + Filename;
+  //FullPath = Dir + "/" + Filename;
+  FullPath = resolvePath(File->getDirectory(), File->getFilename());
   size_t Found = FullPath.find_last_of("/\\");
   Dirname = FullPath.substr(0, Found);
+  isHalPattern();
 }
 
-bool FindHALBypass::isHalFunc(const llvm::Function &F) {
-  return isHalFuncRegex(F);
+void FindHALBypass::MMIOFunc::isHalPattern() {
+  DISubprogram *DISub = F->getSubprogram();
+  if (!DISub) {
+    errs() << "Warning: isHalFunc: DISubprogram not exists.\n";
+    return;
+  }
+
+  std::string Name(DISub->getName());
+  std::string LinkageName(DISub->getLinkageName());
+
+  IsHalPattern = isHalPatternInternal(Name)
+              || isHalPatternInternal(LinkageName)
+              || isHalPatternInternal(FullPath);
+  IsHalGroundTruth = isHalPatternInternal(Name, true)
+                  || isHalPatternInternal(LinkageName, true)
+                  || isHalPatternInternal(FullPath, true);
+    //MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
+    //                << LinkageName << " " << FullPath << "\n");
 }
 
-bool FindHALBypass::isHalRegexInternal(std::string Name) {
+bool FindHALBypass::MMIOFunc::isHalPatternInternal(std::string Name, bool Full) {
   std::regex ProjRe("Amazfitbip-FreeRTOS|RP2040-FreeRTOS|"
                     "(blockingmqtt|dualport|ipcommdevice)_freertos");
   Name = std::regex_replace(Name, ProjRe, "");
 
-  std::regex HalRe("(?!.*zephyr/samples)" // Does not contain "zephyr/samples"
-                   "(?!.*hal_examples)" // Does not contain "hal_examples"
-                   ".*(^|[^[:alpha:]])" // Word boundary
-                   "(hal|drivers?|cmsis|arch|soc|boards?|irq|isr"
-                   "|port(able)?|spi|hardware"
-                   // below are project-specific patterns
-                   "|npl"  // NimBLE Porting Layer (NPL)
-                   "|nrfx"  // peripheral drivers for Nordic SoCs
-                   "|libopencm3"
-                   "|zephyr/subsys/bluetooth/controller"
-                   "|mbed-os/targets"
-                   //"|mbed-os/platform"
-                   "|avm"  // Avem/libs/module/avm_*.[ch]
-                   "|plo/devices" // phoenix-rtos
-                   "|esp-idf/components/(esp_hw_support|esp_system|bootloader_support|"
-                   "esp_phy|esp_timer|ulp)"
-                   "|system_stm32f4xx\\.c"  // STM32_BASE
-                   // Debug purpose
-                   //"|print_context_info" // mbed
-                   //"|nx_start_application" // nuttx
-                   ")($|[^[:alpha:]]).*",
-                   std::regex::icase);
-  return std::regex_match(Name, HalRe);
-}
-
-bool FindHALBypass::isHalFuncRegex(const llvm::Function &F) {
-  DISubprogram *DISub = F.getSubprogram();
-  if (!DISub) {
-    errs() << "Warning: isHalFunc: DISubprogram not exists.\n";
-    return false;
+  std::string HalReStr =
+    "(?!.*zephyr/samples)" // Does not contain "zephyr/samples"
+    "(?!.*hal_examples)" // Does not contain "hal_examples"
+    ".*(^|[^[:alpha:]])" // Word boundary
+    "(hal|drivers?|cmsis|arch|soc|boards?|irq|isr"
+    "|port(able)?|spi|hardware"
+    "";
+  if (Full) {
+    HalReStr +=
+    // below are project-specific patterns
+    "|npl"  // NimBLE Porting Layer (NPL)
+    "|nrfx"  // peripheral drivers for Nordic SoCs
+    "|libopencm3"
+    "|zephyr/subsys/bluetooth/controller"
+    "|mbed-os/targets"
+    //"|mbed-os/platform"
+    "|avm"  // Avem/libs/module/avm_*.[ch]
+    "|plo/devices" // phoenix-rtos
+    "|esp-idf/components/(esp_hw_support|esp_system|bootloader_support|"
+    "esp_phy|esp_timer|ulp)"
+    "|system_stm32f4xx\\.c"  // STM32_BASE
+    // Debug purpose
+    //"|print_context_info" // mbed
+    //"|nx_start_application" // nuttx
+    "";
   }
-  DIFile *File = DISub->getFile();
-  MY_DEBUG(DISub->dump());
-  MY_DEBUG(File->dump());
-
-  std::string Name(DISub->getName());
-  std::string LinkageName(DISub->getLinkageName());
-  //std::string Filename(File->getFilename());
-  //std::string Dir(File->getDirectory());
-  //std::string AbsPath(Dir + "/" + Filename);
-  std::string ResolvedPath(resolvePath(File->getDirectory(), File->getFilename()));
-
-  if (isHalRegexInternal(Name) || isHalRegexInternal(LinkageName)
-      || isHalRegexInternal(ResolvedPath)) {
-    MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
-                    << LinkageName << " " << Filename << "\n");
-    return true;
-  }
-  return false;
+  HalReStr += ")($|[^[:alpha:]]).*";
+  return std::regex_match(Name, std::regex(HalReStr, std::regex::icase));
 }
 
 void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
@@ -143,13 +139,13 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
     //if (I.second.TransClosureInDeg >= CallGraphTCInDegPctl(75.0)) {
-    if (I.second.TransClosureInDeg >= 50) {
+    if (I.second.TransClosureInDeg >= 10) {
       HalDirs.insert(I.second.Dirname);
     }
   }
   for (auto &I : MMIOFuncMap) {
     if (HalDirs.find(I.second.Dirname) != HalDirs.end() ) {
-      I.second.IsHal2 = true;
+      I.second.IsHalCG = true;
     }
   }
 //  auto CntTruePos = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
@@ -444,7 +440,7 @@ static void printFuncs(raw_ostream &OutS,
   OutS << "================================================="
        << "\n";
   OutS << "LLVM-TUTOR: " << Str << " (# = " << MMIOFuncs.size() << ")\n";
-  OutS << "Function, Location of MMIO inst, TC In-degree, IsHal(regex), IsHal(CG)\n";
+  OutS << "Function, Location of MMIO inst, TC In-degree, IsHal(regex), IsHal(CG), IsHal(truth)\n";
   OutS << "-------------------------------------------------"
        << "\n";
 
@@ -454,8 +450,9 @@ static void printFuncs(raw_ostream &OutS,
     printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
     //OutS << " " << Node.second.InDegree;
     OutS << " " << Node.second.TransClosureInDeg;
-    OutS << " " << Node.second.IsHal;
-    OutS << " " << Node.second.IsHal2;
+    OutS << " " << Node.second.IsHalPattern;
+    OutS << " " << Node.second.IsHalCG;
+    OutS << " " << Node.second.IsHalGroundTruth;
     OutS << "\n";
   }
 
@@ -475,7 +472,8 @@ static void printHALBypassResult(raw_ostream &OutS,
   //FindHALBypass::Result TPFuncs, FPFuncs, FNFuncs, TNFuncs;
   FindHALBypass::Result NonConv, Conv;
   for (auto &Node : MMIOFuncs) {
-    if (!Node.second.IsHal && !Node.second.IsHal2)
+    //if (!Node.second.IsHalPattern && !Node.second.IsHalCG)
+    if (!Node.second.IsHalGroundTruth)
       NonConv.insert(Node);
     //else if (Node.second.IsHal && !Node.second.IsHal2)
     //  FPFuncs.insert(Node);
