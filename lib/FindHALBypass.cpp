@@ -199,7 +199,9 @@ void FindHALBypass::computeCallGraphTCInDeg(llvm::CallGraph &CG) {
       NumOfEdges++;
     }
   }
-  dbgs() << "#vertices=" << TotNumOfCGN << " #edges=" << NumOfEdges << "\n";
+  //dbgs() << "#vertices=" << TotNumOfCGN << " #edges=" << NumOfEdges << "\n";
+  CGNumOfNodes = TotNumOfCGN;
+  CGNumOfEdges = NumOfEdges;
 
   //std::vector<int> InDegrees = runFloydWarshall(AdjMatrix, TotNumOfCGN);
   std::vector<int> InDegrees = runTCEst(AdjMatrix, TotNumOfCGN);
@@ -341,8 +343,14 @@ PreservedAnalyses FindHALBypassPrinter::run(Module &M,
 
 FindHALBypass::Result FindHALBypass::run(llvm::Module &M,
                                          llvm::ModuleAnalysisManager &MAM) {
-  auto &Funcs = MAM.getResult<FindMMIOFunc>(M);
-  return runOnModule(M, Funcs);
+  auto start_time = std::chrono::high_resolution_clock::now();
+  //auto &Funcs = MAM.getResult<FindMMIOFunc>(M);
+  auto Res = runOnModule(M, MAM.getResult<FindMMIOFunc>(M));
+  auto end_time = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
+      end_time - start_time);
+  dbgs() << "# of Node vs. Analysis time: " << CGNumOfNodes << " " << duration.count() << "\n";
+  return Res;
 }
 
 #if 0

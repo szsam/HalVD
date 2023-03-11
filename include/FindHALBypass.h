@@ -65,6 +65,8 @@ private:
   int CallGraphTCInDegPctl(double percent);
 
   Result MMIOFuncMap;
+  int CGNumOfNodes;
+  int CGNumOfEdges;
 };
 
 //------------------------------------------------------------------------------
