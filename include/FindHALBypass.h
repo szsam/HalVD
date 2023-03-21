@@ -37,8 +37,8 @@ struct FindHALBypass : public llvm::AnalysisInfoMixin<FindHALBypass> {
 
     const llvm::Function *F;
     bool IsHalPattern;
-    bool IsHalCG;
-    bool IsHalGroundTruth;
+    bool NCMA_CG;
+    bool NCMA_GroundTruth;
     int InDegree;
     int TransClosureInDeg;
     std::string FullPath;

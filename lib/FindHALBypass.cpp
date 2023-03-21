@@ -64,7 +64,7 @@ FindHALBypass::runOnModule(Module &M, const FindMMIOFunc::Result &MMIOFuncs) {
 
 FindHALBypass::MMIOFunc::MMIOFunc(const FindMMIOFunc::MMIOFunc &Parent,
                                   const Function *F)
-    : FindMMIOFunc::MMIOFunc(Parent), F(F), IsHalPattern(false), IsHalCG(false),
+    : FindMMIOFunc::MMIOFunc(Parent), F(F), IsHalPattern(false), NCMA_CG(false),
       InDegree(0), TransClosureInDeg(0) {
   DISubprogram *DISub = F->getSubprogram();
   if (!DISub) return;
@@ -88,12 +88,12 @@ void FindHALBypass::MMIOFunc::isHalPattern() {
   std::string Name(DISub->getName());
   std::string LinkageName(DISub->getLinkageName());
 
-  IsHalPattern = isHalPatternInternal(Name)
-              || isHalPatternInternal(LinkageName)
-              || isHalPatternInternal(FullPath);
-  IsHalGroundTruth = isHalPatternInternal(Name, true)
-                  || isHalPatternInternal(LinkageName, true)
-                  || isHalPatternInternal(FullPath, true);
+//  IsHalPattern = isHalPatternInternal(Name)
+//              || isHalPatternInternal(LinkageName)
+//              || isHalPatternInternal(FullPath);
+  NCMA_GroundTruth = !MacroUsed && !(isHalPatternInternal(Name, true)
+                                  || isHalPatternInternal(LinkageName, true)
+                                  || isHalPatternInternal(FullPath, true));
     //MY_DEBUG(dbgs() << "Hal function: " << DISub->getName() << " "
     //                << LinkageName << " " << FullPath << "\n");
 }
@@ -108,7 +108,7 @@ bool FindHALBypass::MMIOFunc::isHalPatternInternal(std::string Name, bool Full) 
     "(?!.*hal_examples)" // Does not contain "hal_examples"
     ".*(^|[^[:alpha:]])" // Word boundary
     "(hal|drivers?|cmsis|arch|soc|boards?|irq|isr"
-    "|port(able)?|spi|hardware"
+    "|port(able)?|spi|hardware|timer|nvic"
     "";
   if (Full) {
     HalReStr +=
@@ -122,7 +122,7 @@ bool FindHALBypass::MMIOFunc::isHalPatternInternal(std::string Name, bool Full) 
     "|avm"  // Avem/libs/module/avm_*.[ch]
     "|plo/devices" // phoenix-rtos
     "|esp-idf/components/(esp_hw_support|esp_system|bootloader_support|"
-    "esp_phy|esp_timer|ulp)"
+    "esp_phy|esp_timer|ulp|esp_psram|esp_rom)"
     "|system_stm32f4xx\\.c"  // STM32_BASE
     // Debug purpose
     //"|print_context_info" // mbed
@@ -138,6 +138,7 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   computeCallGraphTCInDeg(CG);
   std::set<std::string> HalDirs;
   for (auto &I : MMIOFuncMap) {
+    I.second.NCMA_CG = !I.second.MacroUsed;
     //if (I.second.TransClosureInDeg >= CallGraphTCInDegPctl(75.0)) {
     if (I.second.TransClosureInDeg >= 10) {
       HalDirs.insert(I.second.Dirname);
@@ -145,7 +146,7 @@ void FindHALBypass::callGraphBasedHalIdent(llvm::CallGraph &CG) {
   }
   for (auto &I : MMIOFuncMap) {
     if (HalDirs.find(I.second.Dirname) != HalDirs.end() ) {
-      I.second.IsHalCG = true;
+      I.second.NCMA_CG = false;
     }
   }
 //  auto CntTruePos = std::count_if(MMIOFuncMap.begin(), MMIOFuncMap.end(),
@@ -440,7 +441,7 @@ static void printFuncs(raw_ostream &OutS,
   OutS << "================================================="
        << "\n";
   OutS << "LLVM-TUTOR: " << Str << " (# = " << MMIOFuncs.size() << ")\n";
-  OutS << "Function, Location of MMIO inst, TC In-degree, IsHal(regex), IsHal(CG), IsHal(truth)\n";
+  OutS << "Function, Location of MMIO inst, TC In-degree, NCMA(CG), NCMA(truth), Macro\n";
   OutS << "-------------------------------------------------"
        << "\n";
 
@@ -450,9 +451,10 @@ static void printFuncs(raw_ostream &OutS,
     printDebugLoc(OutS, Node.second.MMIOIns->getDebugLoc());
     //OutS << " " << Node.second.InDegree;
     OutS << " " << Node.second.TransClosureInDeg;
-    OutS << " " << Node.second.IsHalPattern;
-    OutS << " " << Node.second.IsHalCG;
-    OutS << " " << Node.second.IsHalGroundTruth;
+    //OutS << " " << Node.second.IsHalPattern;
+    OutS << " " << Node.second.NCMA_CG;
+    OutS << " " << Node.second.NCMA_GroundTruth;
+    OutS << " " << Node.second.MacroUsed;
     OutS << "\n";
   }
 
@@ -473,7 +475,7 @@ static void printHALBypassResult(raw_ostream &OutS,
   FindHALBypass::Result NonConv, Conv;
   for (auto &Node : MMIOFuncs) {
     //if (!Node.second.IsHalPattern && !Node.second.IsHalCG)
-    if (!Node.second.IsHalGroundTruth)
+    if (Node.second.NCMA_GroundTruth)
       NonConv.insert(Node);
     //else if (Node.second.IsHal && !Node.second.IsHal2)
     //  FPFuncs.insert(Node);

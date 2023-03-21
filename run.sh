@@ -2,7 +2,7 @@
 
 LLVM_DIR="/usr/lib/llvm-14"
 
-#BITCODES=$(find "$RTOSExploration"/bitcode-db/{mbed-os,nuttx,phoenix-rtos,zephyr-samples,InfiniTime} -name "*.bc")
+#BITCODES=$(find "$RTOSExploration"/bitcode-db/nrf52-keyboard -name "*.bc")
 BITCODES=$(find "$RTOSExploration/bitcode-db/" \
   -not \( -path "$RTOSExploration/bitcode-db/esp-idf-examples" -prune \) -name "*.bc")
 BITCODES_ESP_IDF=$(find "$RTOSExploration/bitcode-db/esp-idf-examples" -name "*.ll")

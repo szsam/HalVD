@@ -71,8 +71,8 @@ bool FindMMIOFunc::isMMIOInst(llvm::Instruction *Ins) {
 
 void FindMMIOFunc::findMMIOFunc(Module &M, Result &MMIOFuncs) {
   for (auto &Func : M) {
-    if (ignoreFunc(Func))
-      continue;
+    //if (ignoreFunc(Func))
+    //  continue;
     for (auto &Ins : instructions(Func)) {
       if (!isMMIOInst(&Ins))
         continue;
@@ -80,7 +80,7 @@ void FindMMIOFunc::findMMIOFunc(Module &M, Result &MMIOFuncs) {
         continue;
       MY_DEBUG(dbgs() << "MMIO func: " << Func.getName() << "\n");
       // MMIOFuncs[&Func] = MMIOFunc(&Ins);
-      MMIOFuncs.insert({&Func, MMIOFunc(&Ins)});
+      MMIOFuncs.insert({&Func, MMIOFunc(&Ins, ignoreFunc(Func))});
       break;
     }
   }
@@ -95,7 +95,8 @@ bool FindMMIOFunc::ignoreFunc(llvm::Function &F) {
                          + std::string(File->getFilename());
   std::regex PathRe("(freertos.*(queue|tasks|timers|event_groups)\\.c"
                     "|freertos-plus-tcp/tools/tcp_utilities/tcp_netstat\\.c"
-                    //"|Cicada-FW"
+                    "|Cicada-FW"
+                    "|RP2040-FreeRTOS/App-IRQs/main\\.cpp"
                     ")",
                     std::regex::icase);
   if (std::regex_search(FullPath, PathRe))

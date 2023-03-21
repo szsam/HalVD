@@ -40,10 +40,11 @@
 
 struct FindMMIOFunc : public llvm::AnalysisInfoMixin<FindMMIOFunc> {
   struct MMIOFunc {
-    explicit MMIOFunc(const llvm::Instruction *I)
-        : MMIOIns(I) {}
+    explicit MMIOFunc(const llvm::Instruction *I, bool Macro)
+        : MMIOIns(I), MacroUsed(Macro) {}
     // const llvm::Function *Func;
     const llvm::Instruction *MMIOIns;
+    bool MacroUsed;
   };
   using Result = std::map<const llvm::Function *, MMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
