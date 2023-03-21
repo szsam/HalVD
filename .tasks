@@ -18,7 +18,6 @@ errorformat=%f:%l:%m
 save=2
 
 [project-run]
-#command=python3 run.py
 command=./run.sh
 #command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output 2> nrf-keyboard.out
 #command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<mmio-func>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
