@@ -26,16 +26,27 @@
 //------------------------------------------------------------------------------
 //using ResultStaticCC = llvm::MapVector<const llvm::Function *, unsigned>;
 
+//#define ENABLE_MY_DEBUG
+#ifdef ENABLE_MY_DEBUG
+#define MY_DEBUG(X)                                                            \
+  do {                                                                         \
+    X;                                                                         \
+  } while (false)
+#else
+#define MY_DEBUG(X)                                                            \
+  do {                                                                         \
+  } while (false)
+#endif
+
 struct FindMMIOFunc : public llvm::AnalysisInfoMixin<FindMMIOFunc> {
-  struct NonHalMMIOFunc {
-    explicit NonHalMMIOFunc(const llvm::Instruction *I)
-        : MMIOIns(I), CalledByApp(false), Caller(nullptr) {}
-    //const llvm::Function *Func;
+  struct MMIOFunc {
+    explicit MMIOFunc(const llvm::Instruction *I, bool Macro)
+        : MMIOIns(I), MacroUsed(Macro) {}
+    // const llvm::Function *Func;
     const llvm::Instruction *MMIOIns;
-    bool CalledByApp;
-    const llvm::Function *Caller;
+    bool MacroUsed;
   };
-  using Result = std::map<const llvm::Function *, NonHalMMIOFunc>;
+  using Result = std::map<const llvm::Function *, MMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
   Result runOnModule(llvm::Module &M);
   // Part of the official API:
@@ -51,11 +62,8 @@ private:
   template <typename InstTy>
   bool isMMIOInst_(llvm::Instruction *Ins);
   bool isMMIOInst(llvm::Instruction *Ins);
-  bool isHalFunc(const llvm::Function &F);
-  bool isAppFunc(const llvm::Function &F);
-  bool containHalStr(const std::string &Str);
-  void findNonHalMMIOFunc(llvm::Module &M, Result &MMIOFuncs);
-  void checkCalledByApp(llvm::Module &M, Result &MMIOFuncs);
+  void findMMIOFunc(llvm::Module &M, Result &MMIOFuncs);
+  bool ignoreFunc(llvm::Function &F);
 };
 
 //------------------------------------------------------------------------------

@@ -2,7 +2,8 @@
 LLVM_DIR=/usr/lib/llvm-14
 
 [project-init]
-command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) ..
+command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) -DCMAKE_BUILD_TYPE=Release ..
+#command=rm -rf build && mkdir build && cd build && cmake -DLT_LLVM_INSTALL_DIR=$(+LLVM_DIR) -DCMAKE_BUILD_TYPE=Debug ..
 cwd=<root>
 errorformat=
 save=2
@@ -14,9 +15,8 @@ errorformat=%f:%l:%m
 save=2
 
 [project-run]
-#command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<hal-bypass>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
-command=$(+LLVM_DIR)/bin/opt -load-pass-plugin lib/libFindMMIOFunc.so -load-pass-plugin lib/libFindHALBypass.so --passes='print<mmio-func>' --disable-output <root>/../InfiniTime/build/src/pinetime-app-1.10.0.out.bc 2> InfiniTime.out
-cwd=<root>/build
+command=./run.sh
+cwd=<root>
 output=terminal
 #pos=TAB
 save=2

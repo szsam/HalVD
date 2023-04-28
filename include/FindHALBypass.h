@@ -21,6 +21,7 @@
 #include "llvm/IR/PassManager.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Analysis/CallGraph.h"
 #include <vector>
 
 //------------------------------------------------------------------------------
@@ -29,7 +30,22 @@
 //using ResultStaticCC = llvm::MapVector<const llvm::Function *, unsigned>;
 
 struct FindHALBypass : public llvm::AnalysisInfoMixin<FindHALBypass> {
-  using Result = std::vector<const llvm::Function *>;
+  struct MMIOFunc : public FindMMIOFunc::MMIOFunc {
+    MMIOFunc(const FindMMIOFunc::MMIOFunc &, const llvm::Function *);
+    void isHalPattern();
+    bool isHalPatternInternal(std::string Name, bool Full=false);
+
+    const llvm::Function *F;
+    bool IsHalPattern;
+    bool NCMA_CG;
+    bool NCMA_GroundTruth;
+    int InDegree;
+    int TransClosureInDeg;
+    std::string FullPath;
+    std::string Dirname;
+  };
+
+  using Result = std::map<const llvm::Function *, MMIOFunc>;
   Result run(llvm::Module &M, llvm::ModuleAnalysisManager &);
   Result runOnModule(llvm::Module &M, const FindMMIOFunc::Result &);
   // Part of the official API:
@@ -41,6 +57,18 @@ private:
   // identifies that particular analysis pass type.
   static llvm::AnalysisKey Key;
   friend struct llvm::AnalysisInfoMixin<FindHALBypass>;
+
+  void callGraphBasedHalIdent(llvm::CallGraph &CG);
+  void computeCallGraphInDeg(llvm::CallGraph &CG);
+  void computeCallGraphTCInDeg(llvm::CallGraph &CG);
+  std::vector<int> runFloydWarshall(std::vector<int> &AdjMatrix, int);
+  std::vector<int> runTCEst(std::vector<int> &AdjMatrix, int);
+  std::vector<double> runTCEstOneIter(std::vector<int> &AdjMatrix, int);
+  int CallGraphTCInDegPctl(double percent);
+
+  Result MMIOFuncMap;
+  int CGNumOfNodes;
+  int CGNumOfEdges;
 };
 
 //------------------------------------------------------------------------------
@@ -63,17 +91,19 @@ private:
 //------------------------------------------------------------------------------
 // Legacy PM interface
 //------------------------------------------------------------------------------
-//struct LegacyFindHALBypass : public llvm::ModulePass {
-//  static char ID;
-//  LegacyFindHALBypass() : llvm::ModulePass(ID) {}
-//  bool runOnModule(llvm::Module &M) override;
-//  // The print method must be implemented by Legacy analysis passes in order to
-//  // print a human readable version of the analysis results:
-//  //    http://llvm.org/docs/WritingAnLLVMPass.html#the-print-method
-//  void print(llvm::raw_ostream &OutS, llvm::Module const *M) const override;
-//
-//  ResultStaticCC DirectCalls;
-//  FindHALBypass Impl;
-//};
+#if 0
+struct LegacyFindHALBypass : public llvm::ModulePass {
+  static char ID;
+  LegacyFindHALBypass() : llvm::ModulePass(ID) {}
+  bool runOnModule(llvm::Module &M) override;
+  // The print method must be implemented by Legacy analysis passes in order to
+  // print a human readable version of the analysis results:
+  //    http://llvm.org/docs/WritingAnLLVMPass.html#the-print-method
+  void print(llvm::raw_ostream &OutS, llvm::Module const *M) const override;
+
+  ResultStaticCC DirectCalls;
+  FindHALBypass Impl;
+};
+#endif
 
 #endif // LLVM_TUTOR_FINDHALBYPASS_H
