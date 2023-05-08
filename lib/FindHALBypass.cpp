@@ -24,6 +24,12 @@
 //
 // License: MIT
 //==============================================================================
+#if 0
+/* Already defined in commandline */
+#define _GNU_SOURCE /* memrchr() */
+#endif
+#include <unistd.h>
+
 #include "FindHALBypass.h"
 
 #include "llvm/Analysis/CallGraph.h"
@@ -37,6 +43,7 @@
 #include <cmath>
 #include <climits>
 #include <cstdlib>
+#include <cstring>
 
 using namespace llvm;
 
@@ -409,9 +416,78 @@ llvmGetPassPluginInfo() {
 //------------------------------------------------------------------------------
 // Helper functions
 //------------------------------------------------------------------------------
+// Copied from https://stackoverflow.com/questions/4774116/realpath-without-resolving-symlinks
+static char * normalize_path(const char * src, size_t src_len) {
+  char * res;
+  size_t res_len;
+
+  const char * ptr = src;
+  const char * end = &src[src_len];
+  const char * next;
+
+  if (src_len == 0 || src[0] != '/') {
+
+	// relative path
+
+	char pwd[PATH_MAX];
+	size_t pwd_len;
+
+	if (getcwd(pwd, sizeof(pwd)) == NULL) {
+	  return NULL;
+	}
+
+	pwd_len = strlen(pwd);
+	res = (char *)malloc(pwd_len + 1 + src_len + 1);
+    if (!res) return NULL;
+	memcpy(res, pwd, pwd_len);
+	res_len = pwd_len;
+  } else {
+	res = (char *)malloc((src_len > 0 ? src_len : 1) + 1);
+    if (!res) return NULL;
+	res_len = 0;
+  }
+
+  for (ptr = src; ptr < end; ptr=next+1) {
+	size_t len;
+	next = (const char *)memchr(ptr, '/', end-ptr);
+	if (next == NULL) {
+	  next = end;
+	}
+	len = next-ptr;
+	switch(len) {
+	  case 2:
+		if (ptr[0] == '.' && ptr[1] == '.') {
+		  const char * slash = (const char *)memrchr(res, '/', res_len);
+		  if (slash != NULL) {
+			res_len = slash - res;
+		  }
+		  continue;
+		}
+		break;
+	  case 1:
+		if (ptr[0] == '.') {
+		  continue;
+
+		}
+		break;
+	  case 0:
+		continue;
+	}
+	res[res_len++] = '/';
+	memcpy(&res[res_len], ptr, len);
+	res_len += len;
+  }
+
+  if (res_len == 0) {
+	res[res_len++] = '/';
+  }
+  res[res_len] = '\0';
+  return res;
+}
+
 static std::string resolvePath(StringRef Dir, StringRef Filename) {
   std::string FullPath = std::string(Dir) + "/" + std::string(Filename);
-  char *ResolvedPath = realpath(FullPath.c_str(), NULL);
+  char *ResolvedPath = normalize_path(FullPath.c_str(), FullPath.size());
   std::string Ret = ResolvedPath ? std::string(ResolvedPath) : FullPath;
   free(ResolvedPath);
   return Ret;
